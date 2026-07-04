@@ -796,8 +796,8 @@
     const { error } = await sb.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        // куда вернёт пользователя после логина — текущая страница, не корень сайта
-        redirectTo: window.location.href.split('#')[0]
+        // после входа сразу открываем приложение (app.html рядом с лендингом)
+        redirectTo: new URL('app.html', window.location.href).href
       }
     });
 
@@ -833,8 +833,7 @@
     if (session) {
       const user = session.user;
       console.log('Вошёл пользователь:', user.email, user.user_metadata);
-      // Здесь можно обновить UI: спрятать кнопку логина, показать имя/аватар,
-      // редиректнуть в дашборд: window.location.href = '/dashboard.html';
+      // Уже авторизован при заходе на лендинг — кнопка ведёт в приложение (см. ниже).
       updateUIForLoggedInUser(user);
     }
   }
@@ -844,7 +843,7 @@
     const startButtons = document.querySelectorAll('.btn-start');
     startButtons.forEach(btn => {
       btn.textContent = user.user_metadata?.full_name || user.email;
-      btn.onclick = () => { window.location.href = '/dashboard.html'; };
+      btn.onclick = () => { window.location.href = 'app.html'; };
     });
 
     // показываем кнопку "Выйти"
@@ -856,8 +855,8 @@
   if (sb) {
     sb.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN') {
-        closeSidebar();
-        updateUIForLoggedInUser(session.user);
+        // только что вошёл на лендинге → сразу открываем приложение
+        window.location.href = 'app.html';
       }
       if (event === 'SIGNED_OUT') {
         location.reload();
