@@ -1,0 +1,22 @@
+# Секреты и окружение
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Локальные конфиги/инструменты
+.claude/
+
+# Временные/тестовые артефакты
+test.pdf
+
+# OS
+.DS_Store
+Thumbs.db
