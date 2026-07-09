@@ -3,6 +3,8 @@ services:
     name: lum-api
     runtime: python
     plan: free
+    # Python 3.14 (дефолт Render) ещё без готовых wheel для pydantic-core/cryptography
+    # → сборка из исходников падает. Фиксируем 3.12 (есть бинарные колёса под всё).
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
@@ -10,6 +12,8 @@ services:
         sync: false          # задаётся вручную в дашборде Render (секрет)
       - key: ALLOWED_ORIGINS
         sync: false
+      - key: PYTHON_VERSION
+        value: "3.12.7"
       - key: SUPABASE_URL
         value: https://fyjofluosbonribyvssx.supabase.co
       - key: LIGHT_MODEL
