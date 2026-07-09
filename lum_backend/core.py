@@ -188,6 +188,20 @@ def step1_chunk(text: str) -> list[str]:
 
 # ─── ШАГ 2: ИЗВЛЕЧЕНИЕ СУЩНОСТЕЙ ─────────────────────────────────────────────
 
+def parse_json_lenient(raw: str):
+    """Разбирает JSON из ответа модели терпимо: снимает markdown-обёртку и, если
+    вокруг JSON есть лишний текст (слабые модели вроде gemini-2.0-flash часто
+    добавляют пояснения), вытаскивает первый {...} или [...] блок."""
+    s = re.sub(r"```json|```", "", raw).strip()
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        m = re.search(r"\{.*\}|\[.*\]", s, re.DOTALL)
+        if not m:
+            raise
+        return json.loads(m.group(0))
+
+
 _EXTRACT_SYSTEM = """Извлеки сущности и связи из научного текста.
 Ответь ТОЛЬКО валидным JSON без markdown:
 {
@@ -211,8 +225,7 @@ def step2_extract_entities(chunks: list[str]) -> list[dict]:
         # пропускаем чанк, остальные обрабатываем как обычно.
         try:
             raw = call_llm(system=_EXTRACT_SYSTEM, user=f"Текст:\n{chunk}", model=LIGHT_MODEL)
-            clean = re.sub(r"```json|```", "", raw).strip()
-            parsed = json.loads(clean)
+            parsed = parse_json_lenient(raw)
             for e in parsed.get("entities", []):
                 e["id"] = f"c{i}_{e['id']}"
                 e["chunk"] = i
@@ -392,7 +405,7 @@ def step6_reason_and_generate(memory: str, top_nodes: list[dict], graph: dict, q
         model=POWER_MODEL,
     )
     try:
-        return json.loads(re.sub(r"```json|```", "", raw).strip())
+        return parse_json_lenient(raw)
     except json.JSONDecodeError:
         return [{"type": "error", "title": "Ошибка парсинга", "description": raw, "connections": []}]
 
@@ -412,7 +425,7 @@ def step6_generate_answer(memory: str, top_nodes: list[dict], query: str) -> dic
         model=POWER_MODEL,
     )
     try:
-        return json.loads(re.sub(r"```json|```", "", raw).strip())
+        return parse_json_lenient(raw)
     except json.JSONDecodeError:
         return {"answer": raw.strip(), "summary": "", "key_points": []}
 
@@ -454,7 +467,7 @@ def step7_mindmap(memory: str, graph: dict, main_topic: str) -> dict | None:
         max_tokens=3000,   # дерево-JSON длиннее обычного ответа, даём запас
     )
     try:
-        mm = json.loads(re.sub(r"```json|```", "", raw).strip())
+        mm = parse_json_lenient(raw)
     except json.JSONDecodeError:
         return None
     return mm if isinstance(mm, dict) and mm.get("children") else None
