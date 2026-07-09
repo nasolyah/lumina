@@ -187,7 +187,9 @@ _EXTRACT_SYSTEM = """Извлеки сущности и связи из науч
     {"from": "id", "to": "id", "label": "тип связи"}
   ]
 }
-Максимум 8 сущностей, 6 связей. Только важные."""
+Максимум 8 сущностей. ВАЖНО: свяжи их между собой так, чтобы НЕ было изолированных —
+каждая сущность должна участвовать хотя бы в одной связи (обычно 7-12 связей).
+Только важные сущности и связи."""
 
 
 def step2_extract_entities(chunks: list[str]) -> list[dict]:
@@ -218,30 +220,50 @@ def step2_extract_entities(chunks: list[str]) -> list[dict]:
 
 def step3_build_graph_with_vectors(extracted: list[dict]) -> dict:
     nodes, edges, name_to_id = {}, [], {}
+    # Карта «id сущности из чанка → id узла, оставшегося в графе после схлопывания
+    # одноимённых». Нужна, чтобы связи из разных чанков сходились к общим узлам,
+    # а не выбрасывались (иначе граф рассыпается на изолированные куски).
+    id_to_canonical = {}
 
     for chunk_data in extracted:
         for entity in chunk_data.get("entities", []):
             name_norm = entity["name"].strip().lower()
             if name_norm in name_to_id:
-                nodes[name_to_id[name_norm]]["mentions"] += 1
+                canonical = name_to_id[name_norm]
+                nodes[canonical]["mentions"] += 1
             else:
-                name_to_id[name_norm] = entity["id"]
+                canonical = entity["id"]
+                name_to_id[name_norm] = canonical
                 vector = text_to_vector(entity["name"] + " " + entity.get("description", ""))
-                nodes[entity["id"]] = {
-                    "id":          entity["id"],
+                nodes[canonical] = {
+                    "id":          canonical,
                     "name":        entity["name"],
                     "type":        entity.get("type", "concept"),
                     "description": entity.get("description", ""),
                     "mentions":    1,
                     "vector":      vector,
                 }
+            id_to_canonical[entity["id"]] = canonical
+
         for rel in chunk_data.get("relations", []):
-            if rel["from"] in nodes and rel["to"] in nodes:
+            # переназначаем концы связи на канонические узлы
+            f = id_to_canonical.get(rel["from"])
+            t = id_to_canonical.get(rel["to"])
+            if f and t and f != t and f in nodes and t in nodes:
                 edges.append({
-                    "from":  rel["from"],
-                    "to":    rel["to"],
+                    "from":  f,
+                    "to":    t,
                     "label": rel.get("label", "связан с"),
                 })
+
+    # убираем дубликаты рёбер (одна и та же связь могла прийти из нескольких чанков)
+    seen_edges, unique_edges = set(), []
+    for e in edges:
+        key = (e["from"], e["to"], e["label"])
+        if key not in seen_edges:
+            seen_edges.add(key)
+            unique_edges.append(e)
+    edges = unique_edges
 
     for node_id, node in nodes.items():
         neighbor_ids = (
