@@ -389,7 +389,9 @@
 
   <!-- SOURCE MODAL -->
   <div class="overlay" id="overlay">
-    <div class="modal">
+    <div class="modal" style="position:relative;">
+      <button id="modalClose" aria-label="Закрыть" title="Закрыть"
+        style="position:absolute;top:12px;right:14px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:#94A3B8;font-size:20px;line-height:1;cursor:pointer;border-radius:8px;">✕</button>
       <h2>Загрузить источник</h2>
       <div class="sub">Вставьте текст или загрузите файл. Lumina построит граф понятий и связей.</div>
       <div class="tabs">
@@ -512,6 +514,10 @@
   function closeModal(){ overlay.classList.remove('open'); }
   $('newSourceBtn').onclick = openModal;
   $('emptyCTA').onclick = openModal;
+  $('modalClose').onclick = closeModal;
+  // закрытие по клику на затемнённый фон и по Escape
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
   // ── АНАЛИЗ (построение графа) ──
   $('analyzeBtn').onclick = async () => {
@@ -750,11 +756,11 @@
   async function initAuth(){
     if (!sb) { showGate('Supabase не настроен — вход невозможен.'); return; }
     const { data: { session } } = await sb.auth.getSession();
-    if (session) { hideGate(); showUser(session.user); openModal(); warmup(); }
+    if (session) { hideGate(); showUser(session.user); warmup(); }
     else { showGate(); }
 
     sb.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) { hideGate(); showUser(session.user); openModal(); warmup(); }
+      if (event === 'SIGNED_IN' && session) { hideGate(); showUser(session.user); warmup(); }
       if (event === 'SIGNED_OUT') { location.reload(); }
     });
   }
