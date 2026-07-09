@@ -451,10 +451,12 @@ def step7_mindmap(memory: str, graph: dict, main_topic: str) -> dict | None:
     return mm if isinstance(mm, dict) and mm.get("children") else None
 
 
-def flatten_mindmap(mm: dict, graph: dict, in_answer_names: set[str]) -> dict:
+def flatten_mindmap(mm: dict, graph: dict, in_answer_names: set[str],
+                    info: dict | None = None) -> dict:
     """Разворачивает вложенное дерево в {nodes, edges, root} в том же формате,
     что и граф, — фронт рисует его той же иерархической раскладкой.
-    Тип узла-ветки — 'branch'; листьям тип берём из графа по имени."""
+    Тип узла-ветки — 'branch'; листьям тип/описание/фрагмент берём из графа по имени."""
+    info = info or {}
     name_type = {n["name"].strip().lower(): n["type"] for n in graph["nodes"].values()}
     nodes, edges, used = [], [], set()
 
@@ -472,7 +474,10 @@ def flatten_mindmap(mm: dict, graph: dict, in_answer_names: set[str]) -> dict:
 
     def add(name: str, ntype: str) -> str:
         nid = uid(name)
+        meta = info.get(name.strip().lower(), {})
         nodes.append({"id": nid, "name": name.strip(), "type": ntype,
+                      "description": meta.get("description", ""),
+                      "snippet": meta.get("snippet", ""),
                       "mentions": 1, "in_answer": is_ans(name)})
         return nid
 
@@ -519,18 +524,42 @@ def main_topic_fallback(graph: dict) -> str:
     return max(graph["nodes"].values(), key=lambda n: n["mentions"])["name"]
 
 
+# ─── ФРАГМЕНТЫ ИСХОДНИКА ДЛЯ УЗЛОВ ────────────────────────────────────────────
+
+def build_concept_info(text: str, graph: dict) -> dict:
+    """Для каждого понятия собирает {description, snippet}, где snippet — 1-2
+    предложения из ИСХОДНОГО текста, где это понятие упоминается. Нужно, чтобы по
+    клику на узел показать фрагмент источника (grounding: откуда взялось понятие)."""
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
+    low = [(s, s.lower()) for s in sentences]
+    info = {}
+    for n in graph["nodes"].values():
+        nn = n["name"].strip().lower()
+        if not nn or nn in info:
+            continue
+        hits = [s for (s, sl) in low if nn in sl]
+        info[nn] = {
+            "description": n.get("description", ""),
+            "snippet": " ".join(hits[:2]).strip()[:600],
+        }
+    return info
+
+
 # ─── СЕРИАЛИЗАЦИЯ ГРАФА ДЛЯ ФРОНТА ────────────────────────────────────────────
 
-def serialize_graph(graph: dict, top_ids: set[str]) -> dict:
+def serialize_graph(graph: dict, top_ids: set[str], info: dict | None = None) -> dict:
     """Готовит граф к отдаче: убирает тяжёлые векторы, помечает узлы/рёбра,
     попавшие в ответ (для подсветки 'пути рассуждения' на фронте)."""
+    info = info or {}
     nodes = []
     for n in graph["nodes"].values():
+        nn = n["name"].strip().lower()
         nodes.append({
             "id":          n["id"],
             "name":        n["name"],
             "type":        n["type"],
             "description": n["description"],
+            "snippet":     info.get(nn, {}).get("snippet", ""),
             "mentions":    n["mentions"],
             "in_answer":   n["id"] in top_ids,   # ← фронт подсветит эти узлы
         })
@@ -581,6 +610,8 @@ def run_pipeline(text: str, query: str) -> dict:
 
     top_ids = {n["id"] for n in top_nodes}
     in_answer_names = {n["name"].strip().lower() for n in top_nodes}
+    # фрагменты исходника по каждому понятию (для модалки по клику на узел)
+    info = build_concept_info(text, graph)
 
     # Mind-map: иерархическое дерево понятий (то, что рисуется на фронте).
     # Мягкая деградация: если шаг упал (перегрузка/битый JSON) — mindmap=None,
@@ -589,7 +620,7 @@ def run_pipeline(text: str, query: str) -> dict:
     try:
         mm_raw = step7_mindmap(memory, graph, main_topic_fallback(graph))
         if mm_raw:
-            mindmap = flatten_mindmap(mm_raw, graph, in_answer_names)
+            mindmap = flatten_mindmap(mm_raw, graph, in_answer_names, info)
     except PipelineError:
         mindmap = None
 
@@ -613,7 +644,7 @@ def run_pipeline(text: str, query: str) -> dict:
         "query":       query,
         "answer":      answer_data,
         "schema":      schema,
-        "graph":       serialize_graph(graph, top_ids),
+        "graph":       serialize_graph(graph, top_ids, info),
         "mindmap":     mindmap,   # иерархическое дерево (может быть None → фронт рисует graph)
         "explanation": explanation,
         "stats": {

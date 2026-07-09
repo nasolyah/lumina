@@ -416,6 +416,21 @@
     </div>
   </div>
 
+  <!-- Модалка узла: описание + фрагмент источника (по клику на блок графа) -->
+  <div class="overlay" id="nodeOverlay">
+    <div class="modal" style="position:relative; max-width:660px;">
+      <button id="nodeClose" aria-label="Закрыть" title="Закрыть"
+        style="position:absolute;top:12px;right:14px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:#94A3B8;font-size:20px;line-height:1;cursor:pointer;border-radius:8px;">✕</button>
+      <h2 id="nodeTitle" style="margin-right:28px;"></h2>
+      <div class="sub" id="nodeType"></div>
+      <div id="nodeDesc" style="margin:10px 0 0;color:#CBD5E1;font-size:14px;line-height:1.5;"></div>
+      <div id="nodeSnippetWrap" style="margin-top:16px;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7C6FF0;margin-bottom:6px;">Фрагмент источника</div>
+        <div id="nodeSnippet" style="background:rgba(20,20,51,0.6);border-left:3px solid #7C6FF0;border-radius:6px;padding:12px 14px;color:#E2E8F0;font-size:13.5px;line-height:1.55;white-space:pre-wrap;"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
 <script>
@@ -518,7 +533,33 @@
   $('modalClose').onclick = closeModal;
   // закрытие по клику на затемнённый фон и по Escape
   overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+  // ── МОДАЛКА УЗЛА (описание + фрагмент источника) ──
+  const nodeOverlay = $('nodeOverlay');
+  const TYPE_LABEL = { concept:'Концепция', method:'Метод', person:'Персона', term:'Термин', branch:'Тематическая ветка' };
+  function openNodeModal(n){
+    $('nodeTitle').textContent = n.name || '';
+    $('nodeType').textContent = TYPE_LABEL[n.type] || n.type || '';
+    const desc = (n.description || '').trim();
+    $('nodeDesc').textContent = desc;
+    $('nodeDesc').style.display = desc ? '' : 'none';
+    const snip = (n.snippet || '').trim();
+    if (snip) {
+      $('nodeSnippet').textContent = snip;
+      $('nodeSnippetWrap').style.display = '';
+    } else if (n.type === 'branch') {
+      $('nodeSnippetWrap').style.display = 'none';   // ветка — обобщение, фрагмента нет
+    } else {
+      $('nodeSnippet').textContent = 'В тексте это понятие в явном виде не встречается.';
+      $('nodeSnippetWrap').style.display = '';
+    }
+    nodeOverlay.classList.add('open');
+  }
+  function closeNodeModal(){ nodeOverlay.classList.remove('open'); }
+  $('nodeClose').onclick = closeNodeModal;
+  nodeOverlay.addEventListener('click', e => { if (e.target === nodeOverlay) closeNodeModal(); });
+
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeNodeModal(); } });
 
   // ── АНАЛИЗ (построение графа) ──
   $('analyzeBtn').onclick = async () => {
@@ -677,7 +718,7 @@
             enabled: true,
             direction: 'LR',          // корень слева, ветви растут вправо
             sortMethod: 'directed',   // порядок узлов внутри колонки (уровни заданы явно)
-            levelSeparation: 230,     // расстояние между колонками
+            levelSeparation: 340,     // расстояние между колонками (растянуто по горизонтали)
             nodeSpacing: 95,          // расстояние между узлами одной колонки
             treeSpacing: 150,
             blockShifting: true,
@@ -700,7 +741,7 @@
       network.on('click', params => {
         if (params.nodes.length) {
           const n = graph.nodes.find(x => x.id === params.nodes[0]);
-          if (n) toast(`${n.name}: ${n.description || 'нет описания'}`);
+          if (n) openNodeModal(n);
         }
       });
     } else {
