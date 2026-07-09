@@ -21,7 +21,7 @@ services:
       - key: POWER_MODEL
         value: gemini-flash-latest
       - key: MAX_OUTPUT_TOKENS
-        value: "1200"
+        value: "2048"
       - key: THINKING_BUDGET
         value: "0"
       - key: MAX_TEXT_CHARS

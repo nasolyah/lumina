@@ -43,7 +43,7 @@ LIGHT_MODEL  = os.environ.get("LIGHT_MODEL", "gemini-flash-lite-latest")
 POWER_MODEL  = os.environ.get("POWER_MODEL", "gemini-flash-latest")
 
 # Потолок выходных токенов одного ответа модели.
-MAX_OUTPUT_TOKENS = int(os.environ.get("MAX_OUTPUT_TOKENS", "1200"))
+MAX_OUTPUT_TOKENS = int(os.environ.get("MAX_OUTPUT_TOKENS", "2048"))
 
 # "Мышление" Gemini 2.5 тратит выходные токены. Для JSON-задач оно не нужно —
 # по умолчанию выключаем (0): дешевле и предсказуемее (не съедает лимит на текст).
@@ -82,11 +82,16 @@ def call_llm(system: str, user: str, model: str = POWER_MODEL, retries: int = RE
     }
     # thinkingConfig поддерживают только модели с «мышлением» (2.5+, 3.x, -latest).
     # На моделях без него (напр. gemini-2.0-flash) это поле даёт ошибку — не шлём.
-    # Плюс у gemini-2.5-pro нельзя budget=0 (минимум 128) — тогда тоже не шлём.
     name = model.lower()
     supports_thinking = ("2.5" in name) or ("latest" in name) or name.startswith("gemini-3") or ("gemini-3" in name)
-    if supports_thinking and not ("pro" in name and THINKING_BUDGET <= 0):
-        gen_config["thinkingConfig"] = {"thinkingBudget": THINKING_BUDGET}
+    if supports_thinking:
+        budget = THINKING_BUDGET
+        # ВАЖНО: pro не умеет budget=0 (минимум 128). Если для pro НЕ слать thinkingConfig,
+        # он «думает» динамически и съедает весь maxOutputTokens → пустой ответ. Поэтому
+        # кэпим мышление на минимум — иначе граф не строится. Flash с budget=0 — как было.
+        if "pro" in name and budget <= 0:
+            budget = 128
+        gen_config["thinkingConfig"] = {"thinkingBudget": budget}
     body = {
         "system_instruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": user}]}],
