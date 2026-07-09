@@ -80,10 +80,12 @@ def call_llm(system: str, user: str, model: str = POWER_MODEL, retries: int = RE
         "maxOutputTokens": max_tokens or MAX_OUTPUT_TOKENS,
         "temperature": 0.2,
     }
-    # gemini-2.5-pro не умеет thinkingBudget=0 (минимум 128): если для pro задан 0,
-    # не шлём thinkingConfig вовсе — модель выберет бюджет сама (иначе был бы 400).
-    # Для flash/flash-lite budget=0 корректно выключает «мышление».
-    if not ("pro" in model.lower() and THINKING_BUDGET <= 0):
+    # thinkingConfig поддерживают только модели с «мышлением» (2.5+, 3.x, -latest).
+    # На моделях без него (напр. gemini-2.0-flash) это поле даёт ошибку — не шлём.
+    # Плюс у gemini-2.5-pro нельзя budget=0 (минимум 128) — тогда тоже не шлём.
+    name = model.lower()
+    supports_thinking = ("2.5" in name) or ("latest" in name) or name.startswith("gemini-3") or ("gemini-3" in name)
+    if supports_thinking and not ("pro" in name and THINKING_BUDGET <= 0):
         gen_config["thinkingConfig"] = {"thinkingBudget": THINKING_BUDGET}
     body = {
         "system_instruction": {"parts": [{"text": system}]},
