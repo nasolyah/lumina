@@ -66,7 +66,8 @@ class PipelineError(Exception):
 
 # ─── ВЫЗОВ LLM (Gemini generateContent) ──────────────────────────────────────
 
-def call_llm(system: str, user: str, model: str = POWER_MODEL, retries: int = RETRIES) -> str:
+def call_llm(system: str, user: str, model: str = POWER_MODEL, retries: int = RETRIES,
+             max_tokens: int | None = None) -> str:
     """Один вызов Gemini с ретраями на rate-limit (429) и таймаут.
     Без fallback-моделей: если модель недоступна — бросаем понятную PipelineError."""
     if not GEMINI_API_KEY:
@@ -74,7 +75,7 @@ def call_llm(system: str, user: str, model: str = POWER_MODEL, retries: int = RE
 
     url = GEMINI_URL_TMPL.format(model=model)
     gen_config = {
-        "maxOutputTokens": MAX_OUTPUT_TOKENS,
+        "maxOutputTokens": max_tokens or MAX_OUTPUT_TOKENS,
         "temperature": 0.2,
     }
     # gemini-2.5-pro не умеет thinkingBudget=0 (минимум 128): если для pro задан 0,
@@ -100,10 +101,11 @@ def call_llm(system: str, user: str, model: str = POWER_MODEL, retries: int = RE
             data = r.json()
             if not r.ok:
                 msg = data.get("error", {}).get("message", "API error")
-                # Транзиентные ошибки ретраим: 429 (лимит/квота) и 5xx (перегрузка
-                # модели «high demand», временная недоступность). Раз fallback-моделей
-                # нет — это главная страховка демо от кратких перебоев Gemini.
-                if (r.status_code == 429 or r.status_code >= 500) and attempt < retries:
+                # Транзиентные ошибки ретраим: 429 (лимит/квота), 5xx (перегрузка
+                # «high demand») и 404 (у Gemini бывает мигающий 404 на generateContent,
+                # который проходит на повторе). Раз fallback-моделей нет — это главная
+                # страховка демо от кратких перебоев Gemini.
+                if (r.status_code in (404, 429) or r.status_code >= 500) and attempt < retries:
                     wait = 6.0 + attempt * 4.0          # бэкофф для 5xx/перегрузки
                     if r.status_code == 429:
                         m = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*s", msg)
@@ -406,6 +408,117 @@ def step6_generate_answer(memory: str, top_nodes: list[dict], query: str) -> dic
         return {"answer": raw.strip(), "summary": "", "key_points": []}
 
 
+# ─── ШАГ 7: MIND-MAP (иерархическое дерево понятий) ──────────────────────────
+#
+# Граф от извлечения — «звезда» (всё связано с центром), деревом не выглядит.
+# Здесь сильная модель раскладывает те же понятия в ИЕРАРХИЮ: тема → смысловые
+# ветки → листья, дробя богатые ветки вглубь. Это и рисуется на фронте mind-map'ом.
+
+_MINDMAP_SYSTEM = """Ты строишь mind-map (ментальную карту) научного текста — ИЕРАРХИЧЕСКОЕ дерево.
+Правила:
+- один корень — главная тема текста;
+- главные ветки — по смысловым блокам текста (напр.: происхождение, компоненты,
+  механизм, применение, история/люди, риски); ровно столько, сколько логично;
+- НЕ вешай много узлов в один ряд: если под веткой больше ~6 понятий — раздели
+  на под-ветки. Дерево растёт В ГЛУБИНУ, а не в ширину;
+- используй БОЛЬШИНСТВО понятий из списка (не выкидывай важные);
+- имя листа = само понятие, ДОСЛОВНО как в списке; короткие названия веток
+  (1-3 слова) можешь придумывать сам, но не дублируй ими корень;
+- глубина любая, насколько богат текст.
+Ответь ТОЛЬКО валидным JSON без markdown:
+{"root":"главная тема","children":[
+  {"name":"ветка","children":["лист",{"name":"под-ветка","children":["лист","лист"]}]}
+]}
+Лист — строка. Узел с детьми — объект {"name":..., "children":[...]}."""
+
+
+def step7_mindmap(memory: str, graph: dict, main_topic: str) -> dict | None:
+    """Просит сильную модель разложить понятия графа в иерархическое дерево.
+    Возвращает {"root":..., "children":[...]} или None, если не удалось."""
+    concepts = sorted(graph["nodes"].values(), key=lambda x: x["mentions"], reverse=True)
+    concept_lines = "\n".join(f"- {c['name']}" for c in concepts[:35])
+    raw = call_llm(
+        system=_MINDMAP_SYSTEM,
+        user=f"ГЛАВНАЯ ТЕМА (ориентир): {main_topic}\n\n"
+             f"ПОНЯТИЯ ИЗ ТЕКСТА:\n{concept_lines}\n\nКРАТКОЕ СОДЕРЖАНИЕ:\n{memory}",
+        model=POWER_MODEL,
+        max_tokens=3000,   # дерево-JSON длиннее обычного ответа, даём запас
+    )
+    try:
+        mm = json.loads(re.sub(r"```json|```", "", raw).strip())
+    except json.JSONDecodeError:
+        return None
+    return mm if isinstance(mm, dict) and mm.get("children") else None
+
+
+def flatten_mindmap(mm: dict, graph: dict, in_answer_names: set[str]) -> dict:
+    """Разворачивает вложенное дерево в {nodes, edges, root} в том же формате,
+    что и граф, — фронт рисует его той же иерархической раскладкой.
+    Тип узла-ветки — 'branch'; листьям тип берём из графа по имени."""
+    name_type = {n["name"].strip().lower(): n["type"] for n in graph["nodes"].values()}
+    nodes, edges, used = [], [], set()
+
+    def uid(name: str) -> str:
+        base = name.strip() or "?"
+        key, i = base, 1
+        while key in used:
+            i += 1
+            key = f"{base}#{i}"
+        used.add(key)
+        return key
+
+    def is_ans(name: str) -> bool:
+        return name.strip().lower() in in_answer_names
+
+    def add(name: str, ntype: str) -> str:
+        nid = uid(name)
+        nodes.append({"id": nid, "name": name.strip(), "type": ntype,
+                      "mentions": 1, "in_answer": is_ans(name)})
+        return nid
+
+    root_name = mm.get("root") or main_topic_fallback(graph)
+    root_norm = str(root_name).strip().lower()
+
+    def walk(children, parent_id):
+        for ch in children or []:
+            if isinstance(ch, str) and ch.strip():
+                if ch.strip().lower() == root_norm:   # не дублируем корень листом
+                    continue
+                cid = add(ch, name_type.get(ch.strip().lower(), "term"))
+                edges.append({"from": parent_id, "to": cid, "label": "", "in_answer": is_ans(ch)})
+            elif isinstance(ch, dict) and (ch.get("name") or "").strip():
+                nm = ch["name"]
+                if nm.strip().lower() == root_norm:
+                    continue
+                kids = ch.get("children")
+                ntype = "branch" if kids else name_type.get(nm.strip().lower(), "term")
+                cid = add(nm, ntype)
+                edges.append({"from": parent_id, "to": cid, "label": "", "in_answer": is_ans(nm)})
+                walk(kids, cid)
+
+    root_id = add(root_name, name_type.get(root_norm, "concept"))
+    # верхний уровень: узлы с детьми — ветки, одиночные строки — сразу листья
+    for ch in mm.get("children", []):
+        if isinstance(ch, dict) and (ch.get("name") or "").strip():
+            if ch["name"].strip().lower() == root_norm:   # ветка = корень → раскрыть под корнем
+                walk(ch.get("children"), root_id)
+                continue
+            cid = add(ch["name"], "branch")
+            edges.append({"from": root_id, "to": cid, "label": "", "in_answer": is_ans(ch["name"])})
+            walk(ch.get("children"), cid)
+        elif isinstance(ch, str) and ch.strip() and ch.strip().lower() != root_norm:
+            cid = add(ch, name_type.get(ch.strip().lower(), "term"))
+            edges.append({"from": root_id, "to": cid, "label": "", "in_answer": is_ans(ch)})
+    return {"nodes": nodes, "edges": edges, "root": root_id}
+
+
+def main_topic_fallback(graph: dict) -> str:
+    """Название самого упоминаемого узла — запасной корень mind-map."""
+    if not graph["nodes"]:
+        return "Тема"
+    return max(graph["nodes"].values(), key=lambda n: n["mentions"])["name"]
+
+
 # ─── СЕРИАЛИЗАЦИЯ ГРАФА ДЛЯ ФРОНТА ────────────────────────────────────────────
 
 def serialize_graph(graph: dict, top_ids: set[str]) -> dict:
@@ -467,6 +580,19 @@ def run_pipeline(text: str, query: str) -> dict:
     schema      = step6_reason_and_generate(memory, top_nodes, graph, query)
 
     top_ids = {n["id"] for n in top_nodes}
+    in_answer_names = {n["name"].strip().lower() for n in top_nodes}
+
+    # Mind-map: иерархическое дерево понятий (то, что рисуется на фронте).
+    # Мягкая деградация: если шаг упал (перегрузка/битый JSON) — mindmap=None,
+    # и фронт покажет обычный граф понятий.
+    mindmap = None
+    try:
+        mm_raw = step7_mindmap(memory, graph, main_topic_fallback(graph))
+        if mm_raw:
+            mindmap = flatten_mindmap(mm_raw, graph, in_answer_names)
+    except PipelineError:
+        mindmap = None
+
     # какое намерение вопроса определила система (одинаково для всех top-узлов)
     query_intent = top_nodes[0].get("query_intent") if top_nodes else None
     explanation = {
@@ -488,6 +614,7 @@ def run_pipeline(text: str, query: str) -> dict:
         "answer":      answer_data,
         "schema":      schema,
         "graph":       serialize_graph(graph, top_ids),
+        "mindmap":     mindmap,   # иерархическое дерево (может быть None → фронт рисует graph)
         "explanation": explanation,
         "stats": {
             "words":  len(text.split()),

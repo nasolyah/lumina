@@ -445,6 +445,7 @@
   const TYPE_COLORS = {
     concept: getVar('--t-concept'), method: getVar('--t-method'),
     person:  getVar('--t-person'),  term:   getVar('--t-term'),
+    branch:  '#7C6FF0',   // узлы-ветки mind-map
   };
   function getVar(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 
@@ -566,7 +567,7 @@
         addErrorMsg(data.detail || 'Не удалось обработать запрос.'); setAsk(true); return;
       }
 
-      renderGraph(data.graph);
+      renderGraph(data.mindmap || data.graph);
       renderStats(data.stats);
       addBotMsg(data);
     } catch (err) {
@@ -594,12 +595,15 @@
         adj.get(e.to).push({ other: e.from, i });
       }
     });
-    // корень = самый упоминаемый (при равенстве — самый связанный) узел
-    let root = null, best = -1;
-    graph.nodes.forEach(n => {
-      const score = (n.mentions || 1) * 1000 + adj.get(n.id).length;
-      if (score > best) { best = score; root = n.id; }
-    });
+    // корень: явный из mind-map, иначе — самый упоминаемый/связанный узел
+    let root = (graph.root && adj.has(graph.root)) ? graph.root : null;
+    if (!root) {
+      let best = -1;
+      graph.nodes.forEach(n => {
+        const score = (n.mentions || 1) * 1000 + adj.get(n.id).length;
+        if (score > best) { best = score; root = n.id; }
+      });
+    }
     const level = new Map();       // id → глубина (номер колонки)
     const treeEdge = new Set();    // индексы рёбер «скелета» дерева
     const bfsFrom = (start) => {
@@ -620,20 +624,32 @@
     if (root) bfsFrom(root);
     graph.nodes.forEach(n => bfsFrom(n.id));   // отдельные «острова» — каждый со своего корня
 
-    const nodes = graph.nodes.map(n => ({
-      id: n.id,
-      label: n.name,
-      level: level.get(n.id) || 0,
-      title: `${n.type} · упоминаний: ${n.mentions}`,
-      color: {
-        background: n.in_answer ? TYPE_COLORS[n.type] || '#6C63FF' : 'rgba(20,20,51,0.95)',
-        border: n.in_answer ? '#A78BFA' : (TYPE_COLORS[n.type] || '#6C63FF'),
-        highlight: { background: TYPE_COLORS[n.type] || '#6C63FF', border: '#A78BFA' }
-      },
-      borderWidth: n.in_answer ? 2.5 : 1.5,
-      shadow: n.in_answer ? { enabled: true, color: '#A78BFA', size: 18, x:0, y:0 } : false,
-      font: { color: n.in_answer ? '#FFFFFF' : '#CBD5E1', face: 'Inter', size: n.in_answer ? 15 : 13, vadjust: 0 },
-    }));
+    const nodes = graph.nodes.map(n => {
+      const isBranch = n.type === 'branch';
+      const isRoot   = n.id === root;
+      const typeColor = TYPE_COLORS[n.type] || '#6C63FF';
+      const filled = n.in_answer || isBranch || isRoot;   // корень и ветки — заливкой
+      const lightBg = (n.type === 'method' || n.type === 'term');  // тёмный текст на светлом фоне
+      return {
+        id: n.id,
+        label: n.name,
+        level: level.get(n.id) || 0,
+        title: n.type + (n.mentions > 1 ? ` · упоминаний: ${n.mentions}` : ''),
+        color: {
+          background: filled ? typeColor : 'rgba(20,20,51,0.95)',
+          border: n.in_answer ? '#A78BFA' : typeColor,
+          highlight: { background: typeColor, border: '#A78BFA' }
+        },
+        borderWidth: n.in_answer ? 2.5 : 1.5,
+        shadow: n.in_answer ? { enabled: true, color: '#A78BFA', size: 18, x:0, y:0 } : false,
+        font: {
+          color: filled ? (lightBg ? '#0A0A1A' : '#FFFFFF') : '#CBD5E1',
+          face: 'Inter',
+          size: isRoot ? 16 : ((n.in_answer || isBranch) ? 14 : 13),
+          vadjust: 0,
+        },
+      };
+    });
     const edges = graph.edges.map((e, i) => {
       const isTree = treeEdge.has(i);
       const isAnswer = e.in_answer;
@@ -693,9 +709,20 @@
     network.fit({ animation: false });   // подогнать масштаб под всё дерево
   }
 
-  // подсветить узел из чипа "путь к ответу"
-  window.focusNode = (id) => {
-    if (network && id) { network.selectNodes([id]); network.focus(id, { scale: 1.2, animation: true }); }
+  // подсветить узел из чипа "путь к ответу".
+  // Пробуем по id (обычный граф), затем по имени (в mind-map id = имя понятия).
+  window.focusPath = (i) => {
+    const p = (window._lastPath || [])[i];
+    if (!p || !network || !nodesDS) return;
+    let target = nodesDS.get(p.id) ? p.id : null;
+    if (!target) {
+      const nrm = (p.name || '').trim().toLowerCase();
+      const m = nodesDS.get().find(nd => (nd.label || '').trim().toLowerCase() === nrm);
+      if (m) target = m.id;
+    }
+    if (!target) return;
+    network.selectNodes([target]);
+    network.focus(target, { scale: 1.2, animation: true });
   };
 
   // ── СООБЩЕНИЯ ──
@@ -721,8 +748,9 @@
     else badge.classList.remove('show');
 
     const kpts = (a.key_points || []).map(p => `<li>${esc(p)}</li>`).join('');
-    const chips = path.map(n =>
-      `<span class="chip ${n.type_matched ? 'matched' : ''}" onclick="focusNode('${n.id}')">${esc(n.name)}</span>`
+    window._lastPath = path;   // фокус по индексу — без проблем с экранированием
+    const chips = path.map((n, i) =>
+      `<span class="chip ${n.type_matched ? 'matched' : ''}" onclick="focusPath(${i})">${esc(n.name)}</span>`
     ).join('');
 
     const el = document.createElement('div'); el.className = 'msg bot';
