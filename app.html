@@ -582,9 +582,48 @@
   // ── ГРАФ ──
   function renderGraph(graph){
     $('legend').classList.remove('hidden');
+
+    // ── Остовное дерево (BFS) → строгая иерархия слева-направо, как в mind-map. ──
+    // Граф от модели — «звезда» с хабом и перекрёстными связями; чтобы он читался
+    // деревом, назначаем каждому узлу УРОВЕНЬ (колонку), а лишние рёбра приглушаем.
+    const adj = new Map();
+    graph.nodes.forEach(n => adj.set(n.id, []));
+    graph.edges.forEach((e, i) => {
+      if (adj.has(e.from) && adj.has(e.to)) {
+        adj.get(e.from).push({ other: e.to, i });
+        adj.get(e.to).push({ other: e.from, i });
+      }
+    });
+    // корень = самый упоминаемый (при равенстве — самый связанный) узел
+    let root = null, best = -1;
+    graph.nodes.forEach(n => {
+      const score = (n.mentions || 1) * 1000 + adj.get(n.id).length;
+      if (score > best) { best = score; root = n.id; }
+    });
+    const level = new Map();       // id → глубина (номер колонки)
+    const treeEdge = new Set();    // индексы рёбер «скелета» дерева
+    const bfsFrom = (start) => {
+      if (level.has(start)) return;
+      level.set(start, 0);
+      const queue = [start];
+      while (queue.length) {
+        const u = queue.shift();
+        for (const { other, i } of adj.get(u)) {
+          if (!level.has(other)) {
+            level.set(other, level.get(u) + 1);
+            treeEdge.add(i);
+            queue.push(other);
+          }
+        }
+      }
+    };
+    if (root) bfsFrom(root);
+    graph.nodes.forEach(n => bfsFrom(n.id));   // отдельные «острова» — каждый со своего корня
+
     const nodes = graph.nodes.map(n => ({
       id: n.id,
       label: n.name,
+      level: level.get(n.id) || 0,
       title: `${n.type} · упоминаний: ${n.mentions}`,
       color: {
         background: n.in_answer ? TYPE_COLORS[n.type] || '#6C63FF' : 'rgba(20,20,51,0.95)',
@@ -595,42 +634,49 @@
       shadow: n.in_answer ? { enabled: true, color: '#A78BFA', size: 18, x:0, y:0 } : false,
       font: { color: n.in_answer ? '#FFFFFF' : '#CBD5E1', face: 'Inter', size: n.in_answer ? 15 : 13, vadjust: 0 },
     }));
-    const edges = graph.edges.map((e, i) => ({
-      id: 'e'+i, from: e.from, to: e.to, label: e.label,
-      color: { color: e.in_answer ? '#A78BFA' : 'rgba(148,163,184,0.35)', highlight: '#A78BFA' },
-      width: e.in_answer ? 2 : 1,
-      font: { color: '#64748B', size: 10, strokeWidth: 0, background: 'rgba(10,10,26,0.7)', align: 'top' },
-      arrows: { to: { enabled: false } },
-    }));
+    const edges = graph.edges.map((e, i) => {
+      const isTree = treeEdge.has(i);
+      const isAnswer = e.in_answer;
+      return {
+        id: 'e'+i, from: e.from, to: e.to,
+        // подпись — только на «скелетных» и ответных связях (иначе каша из текста)
+        label: (isAnswer || isTree) ? e.label : '',
+        color: {
+          color: isAnswer ? '#A78BFA' : (isTree ? 'rgba(148,163,184,0.5)' : 'rgba(148,163,184,0.13)'),
+          highlight: '#A78BFA'
+        },
+        width: isAnswer ? 2 : (isTree ? 1.3 : 0.6),
+        font: { color: '#64748B', size: 10, strokeWidth: 0, background: 'rgba(10,10,26,0.7)', align: 'top' },
+        arrows: { to: { enabled: false } },
+      };
+    });
 
     nodesDS = new vis.DataSet(nodes);
     edgesDS = new vis.DataSet(edges);
 
     if (!network) {
       network = new vis.Network($('graph'), { nodes: nodesDS, edges: edgesDS }, {
-        // Mind-map: дерево слева-направо, а не физический «клубок».
         layout: {
           hierarchical: {
             enabled: true,
             direction: 'LR',          // корень слева, ветви растут вправо
-            sortMethod: 'directed',   // уровни по направлению связей
-            levelSeparation: 220,     // расстояние между уровнями (по горизонтали)
-            nodeSpacing: 110,         // расстояние между узлами одного уровня
-            treeSpacing: 170,         // расстояние между отдельными деревьями
+            sortMethod: 'directed',   // порядок узлов внутри колонки (уровни заданы явно)
+            levelSeparation: 230,     // расстояние между колонками
+            nodeSpacing: 95,          // расстояние между узлами одной колонки
+            treeSpacing: 150,
             blockShifting: true,
             edgeMinimization: true,
             parentCentralization: true,
           }
         },
-        physics: false,               // при иерархии физика не нужна
+        physics: false,
         nodes: {
-          shape: 'box',               // прямоугольные карточки
+          shape: 'box',
           margin: 10,
-          widthConstraint: { minimum: 90, maximum: 180 },  // перенос длинных подписей
-          shapeProperties: { borderRadius: 8 },            // скругление углов
+          widthConstraint: { minimum: 90, maximum: 180 },
+          shapeProperties: { borderRadius: 8 },
         },
         edges: {
-          // «коленчатые» связи в стиле mind-map
           smooth: { enabled: true, type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.55 },
         },
         interaction: { hover: true, tooltipDelay: 120, dragNodes: true },
@@ -644,6 +690,7 @@
     } else {
       network.setData({ nodes: nodesDS, edges: edgesDS });
     }
+    network.fit({ animation: false });   // подогнать масштаб под всё дерево
   }
 
   // подсветить узел из чипа "путь к ответу"
