@@ -17,9 +17,9 @@ services:
       - key: SUPABASE_URL
         value: https://fyjofluosbonribyvssx.supabase.co
       - key: LIGHT_MODEL
-        value: gemini-2.5-flash-lite
+        value: gemini-flash-lite-latest
       - key: POWER_MODEL
-        value: gemini-2.5-flash
+        value: gemini-flash-latest
       - key: MAX_OUTPUT_TOKENS
         value: "1200"
       - key: THINKING_BUDGET

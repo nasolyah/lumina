@@ -37,8 +37,10 @@ GEMINI_URL_TMPL = "https://generativelanguage.googleapis.com/v1beta/models/{mode
 #   Flash-Lite ($0.10/$0.40 за 1M ток.) на извлечение,
 #   Flash      ($0.30/$2.50 за 1M ток.) на ответ.
 # Для максимального качества на самом питче можно поставить POWER_MODEL=gemini-2.5-pro.
-LIGHT_MODEL  = os.environ.get("LIGHT_MODEL", "gemini-2.5-flash-lite")
-POWER_MODEL  = os.environ.get("POWER_MODEL", "gemini-2.5-flash")
+# Алиасы -latest всегда указывают на актуальную flash-модель и не «протухают»
+# (в отличие от версий вроде gemini-2.5-flash, которые Google выводит из эксплуатации).
+LIGHT_MODEL  = os.environ.get("LIGHT_MODEL", "gemini-flash-lite-latest")
+POWER_MODEL  = os.environ.get("POWER_MODEL", "gemini-flash-latest")
 
 # Потолок выходных токенов одного ответа модели.
 MAX_OUTPUT_TOKENS = int(os.environ.get("MAX_OUTPUT_TOKENS", "1200"))
