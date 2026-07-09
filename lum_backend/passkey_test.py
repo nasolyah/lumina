@@ -15,12 +15,12 @@ Passkey-тест для Lum (в стиле SelfExtend / LongLM, arXiv:2401.01325
   4. Печатает вердикт PASS/FAIL + где именно факт «всплыл» (ответ / граф / схема).
 
 ЗАПУСК:
-  export GROQ_API_KEY=...        # тот же ключ, что и для сервера
+  export GEMINI_API_KEY=...      # тот же ключ, что и для сервера
   python passkey_test.py                 # один прогон с дефолтным фактом
   python passkey_test.py --position 0.1  # факт ближе к началу
   python passkey_test.py --demo          # подробный вывод для питча
 
-Это НЕ юнит-тест на CI (он ходит в Groq и стоит вызовов) — это инструмент оценки
+Это НЕ юнит-тест на CI (он ходит в Gemini и стоит вызовов) — это инструмент оценки
 качества и демонстрации. Гоняй вручную.
 """
 
@@ -105,7 +105,7 @@ def run_passkey_test(passkey: dict, position: float, demo: bool) -> bool:
     print(f"Вопрос        : {query}")
     print(f"Ждём ключи    : {keywords}")
     print("-" * 64)
-    print("Прогоняю пайплайн (несколько вызовов Groq, это займёт время)...\n")
+    print("Прогоняю пайплайн (несколько вызовов Gemini, это займёт время)...\n")
 
     result = core.run_pipeline(text=text, query=query)
 
@@ -162,8 +162,8 @@ def main():
                         help="Прогнать факт по позициям 0.1/0.5/0.9 и показать сводку")
     args = parser.parse_args()
 
-    if not os.environ.get("GROQ_API_KEY"):
-        print("Ошибка: не задан GROQ_API_KEY. Сделай: export GROQ_API_KEY=...")
+    if not os.environ.get("GEMINI_API_KEY"):
+        print("Ошибка: не задан GEMINI_API_KEY. Сделай: export GEMINI_API_KEY=...")
         sys.exit(1)
 
     if args.sweep:

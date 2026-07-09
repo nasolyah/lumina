@@ -13,8 +13,11 @@ Lum / Lumina — FastAPI-обёртка над GraphRAG пайплайном.
 
 import io
 import os
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from typing import Optional
+import jwt
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
 import core
@@ -43,11 +46,50 @@ app.add_middleware(
 )
 
 
+# ─── АВТОРИЗАЦИЯ (Supabase JWT по JWKS) ───────────────────────────────────────
+# Фронт шлёт access_token сессии Supabase в заголовке Authorization: Bearer <JWT>.
+# Проверяем подпись публичным ключом из JWKS проекта (алгоритм ES256) — локально,
+# ключ кэшируется, запроса к Supabase на каждый вызов нет. Это закрывает бэкенд:
+# без валидного токена /api/analyze и /api/extract не отдаются (защита баланса Gemini).
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+_jwks_client = (
+    jwt.PyJWKClient(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json")
+    if SUPABASE_URL else None
+)
+_bearer = HTTPBearer(auto_error=False)
+
+
+def require_user(cred: Optional[HTTPAuthorizationCredentials] = Depends(_bearer)) -> dict:
+    """FastAPI-зависимость: пускает только с валидным Supabase-JWT, иначе 401."""
+    if _jwks_client is None:
+        # SUPABASE_URL не задан — не тихо пускаем всех, а честно сообщаем о мисконфиге.
+        raise HTTPException(status_code=500, detail="Авторизация не настроена: не задан SUPABASE_URL")
+    if cred is None or not cred.credentials:
+        raise HTTPException(status_code=401, detail="Требуется авторизация")
+    try:
+        signing_key = _jwks_client.get_signing_key_from_jwt(cred.credentials).key
+        return jwt.decode(
+            cred.credentials,
+            signing_key,
+            algorithms=["ES256"],
+            audience="authenticated",
+            issuer=f"{SUPABASE_URL}/auth/v1",
+            options={"require": ["exp", "sub"]},
+        )
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Недействительный или просроченный токен")
+
+
 # ─── СХЕМЫ ЗАПРОСА/ОТВЕТА ─────────────────────────────────────────────────────
 
 class AnalyzeRequest(BaseModel):
     text: str = Field(..., min_length=1, description="Текст для анализа")
     query: str = Field(..., min_length=1, description="Вопрос пользователя")
+
+
+# Лимит на длину анализируемого текста (в символах). Защита от разорительных
+# прогонов: огромный текст = десятки чанков = десятки вызовов Gemini (время + деньги).
+MAX_TEXT_CHARS = int(os.environ.get("MAX_TEXT_CHARS", "100000"))  # ~16 тыс. слов
 
 
 # ─── PDF ──────────────────────────────────────────────────────────────────────
@@ -67,7 +109,8 @@ def root():
 def health():
     return {
         "status": "ok",
-        "groq_key_set": bool(core.GROQ_API_KEY),
+        "gemini_key_set": bool(core.GEMINI_API_KEY),
+        "auth_enabled": _jwks_client is not None,
         "light_model": core.LIGHT_MODEL,
         "power_model": core.POWER_MODEL,
         "chunk_size": core.CHUNK_SIZE,
@@ -76,15 +119,21 @@ def health():
 
 
 @app.post("/api/analyze")
-def analyze(req: AnalyzeRequest):
+def analyze(req: AnalyzeRequest, user: dict = Depends(require_user)):
     """
     Прогоняет текст + вопрос через GraphRAG и возвращает:
       answer, schema, graph (с флагами in_answer), explanation, stats.
+    Требует валидный Supabase-JWT (см. require_user).
     """
+    if len(req.text) > MAX_TEXT_CHARS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Текст слишком большой ({len(req.text)} симв., максимум {MAX_TEXT_CHARS}).",
+        )
     try:
         return core.run_pipeline(text=req.text, query=req.query)
     except core.PipelineError as e:
-        # Ожидаемые ошибки пайплайна (пустой ввод, нет ключа, Groq упал) → 400
+        # Ожидаемые ошибки пайплайна (пустой ввод, нет ключа, Gemini упал) → 400
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         # Непредвиденное → 500, но без утечки внутренних деталей наружу
@@ -92,7 +141,7 @@ def analyze(req: AnalyzeRequest):
 
 
 @app.post("/api/extract")
-async def extract_pdf(file: UploadFile = File(...)):
+async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(require_user)):
     """
     Принимает PDF, возвращает извлечённый текст: {text, chars, pages}.
     Парсинг на бэке надёжнее браузерного; фронт затем шлёт text в /api/analyze.

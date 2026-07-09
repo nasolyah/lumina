@@ -419,7 +419,26 @@
 <script>
   // ── КОНФИГ ──
   // Укажи URL задеплоенного бэкенда (Render). Для локального теста: http://localhost:8000
-  const API_BASE = window.LUM_API_BASE || 'http://localhost:8000';
+  // ⚠️ ПОСЛЕ ДЕПЛОЯ впиши сюда URL своего бэкенда на Render:
+  const PROD_API_BASE = 'https://lum-api.onrender.com';   // ← ЗАМЕНИ на свой адрес
+  // Локально (localhost / открытый файл) — localhost:8000; на GitHub Pages — Render.
+  const _isLocal = ['localhost', '127.0.0.1', ''].includes(location.hostname);
+  const API_BASE = window.LUM_API_BASE || (_isLocal ? 'http://localhost:8000' : PROD_API_BASE);
+
+  // Заголовок авторизации: токен текущей сессии Supabase (бэк проверяет его по JWKS).
+  async function authHeader(){
+    if (!sb) return {};
+    const { data: { session } } = await sb.auth.getSession();
+    return session ? { 'Authorization': `Bearer ${session.access_token}` } : {};
+  }
+
+  // Прогрев бэкенда: Render на free-плане засыпает, первый запрос висит 30-50 сек.
+  // Тихо будим сервис health-пингом, как только пользователь вошёл.
+  let _warmed = false;
+  function warmup(){
+    if (_warmed) return; _warmed = true;
+    fetch(API_BASE + '/api/health').catch(() => {});
+  }
 
   const TYPE_COLORS = {
     concept: getVar('--t-concept'), method: getVar('--t-method'),
@@ -472,9 +491,10 @@
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const res = await fetch(API_BASE + '/api/extract', { method: 'POST', body: fd });
+      const res = await fetch(API_BASE + '/api/extract', { method: 'POST', headers: await authHeader(), body: fd });
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 401) showGate('Сессия истекла — войдите снова.');
         fname.textContent = 'поддерживается .txt, .md, .pdf';
         toast(data.detail || 'Не удалось разобрать PDF.');
         return;
@@ -529,13 +549,16 @@
     try {
       const res = await fetch(API_BASE + '/api/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
         body: JSON.stringify({ text: currentText, query })
       });
       const data = await res.json();
       thinkingEl.remove();
 
-      if (!res.ok) { addErrorMsg(data.detail || 'Не удалось обработать запрос.'); setAsk(true); return; }
+      if (!res.ok) {
+        if (res.status === 401) showGate('Сессия истекла — войдите снова.');
+        addErrorMsg(data.detail || 'Не удалось обработать запрос.'); setAsk(true); return;
+      }
 
       renderGraph(data.graph);
       renderStats(data.stats);
@@ -558,22 +581,20 @@
       label: n.name,
       title: `${n.type} · упоминаний: ${n.mentions}`,
       color: {
-        background: n.in_answer ? TYPE_COLORS[n.type] || '#6C63FF' : 'rgba(26,26,62,0.9)',
+        background: n.in_answer ? TYPE_COLORS[n.type] || '#6C63FF' : 'rgba(20,20,51,0.95)',
         border: n.in_answer ? '#A78BFA' : (TYPE_COLORS[n.type] || '#6C63FF'),
         highlight: { background: TYPE_COLORS[n.type] || '#6C63FF', border: '#A78BFA' }
       },
-      borderWidth: n.in_answer ? 3 : 1.5,
-      shadow: n.in_answer ? { enabled: true, color: '#A78BFA', size: 22, x:0, y:0 } : false,
-      font: { color: n.in_answer ? '#FFFFFF' : '#94A3B8', face: 'Inter', size: n.in_answer ? 16 : 13 },
-      value: n.mentions,
+      borderWidth: n.in_answer ? 2.5 : 1.5,
+      shadow: n.in_answer ? { enabled: true, color: '#A78BFA', size: 18, x:0, y:0 } : false,
+      font: { color: n.in_answer ? '#FFFFFF' : '#CBD5E1', face: 'Inter', size: n.in_answer ? 15 : 13, vadjust: 0 },
     }));
     const edges = graph.edges.map((e, i) => ({
       id: 'e'+i, from: e.from, to: e.to, label: e.label,
-      color: { color: e.in_answer ? '#A78BFA' : 'rgba(108,99,255,0.25)', highlight: '#A78BFA' },
-      width: e.in_answer ? 2.5 : 1,
-      font: { color: '#64748B', size: 10, strokeWidth: 0, background: 'rgba(10,10,26,0.7)' },
-      arrows: { to: { enabled: true, scaleFactor: 0.5 } },
-      smooth: { type: 'continuous' },
+      color: { color: e.in_answer ? '#A78BFA' : 'rgba(148,163,184,0.35)', highlight: '#A78BFA' },
+      width: e.in_answer ? 2 : 1,
+      font: { color: '#64748B', size: 10, strokeWidth: 0, background: 'rgba(10,10,26,0.7)', align: 'top' },
+      arrows: { to: { enabled: false } },
     }));
 
     nodesDS = new vis.DataSet(nodes);
@@ -581,9 +602,32 @@
 
     if (!network) {
       network = new vis.Network($('graph'), { nodes: nodesDS, edges: edgesDS }, {
-        nodes: { shape: 'dot', scaling: { min: 12, max: 34 } },
-        physics: { barnesHut: { gravitationalConstant: -6000, springLength: 130, springConstant: 0.04 }, stabilization: { iterations: 180 } },
-        interaction: { hover: true, tooltipDelay: 120 },
+        // Mind-map: дерево слева-направо, а не физический «клубок».
+        layout: {
+          hierarchical: {
+            enabled: true,
+            direction: 'LR',          // корень слева, ветви растут вправо
+            sortMethod: 'directed',   // уровни по направлению связей
+            levelSeparation: 220,     // расстояние между уровнями (по горизонтали)
+            nodeSpacing: 110,         // расстояние между узлами одного уровня
+            treeSpacing: 170,         // расстояние между отдельными деревьями
+            blockShifting: true,
+            edgeMinimization: true,
+            parentCentralization: true,
+          }
+        },
+        physics: false,               // при иерархии физика не нужна
+        nodes: {
+          shape: 'box',               // прямоугольные карточки
+          margin: 10,
+          widthConstraint: { minimum: 90, maximum: 180 },  // перенос длинных подписей
+          shapeProperties: { borderRadius: 8 },            // скругление углов
+        },
+        edges: {
+          // «коленчатые» связи в стиле mind-map
+          smooth: { enabled: true, type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.55 },
+        },
+        interaction: { hover: true, tooltipDelay: 120, dragNodes: true },
       });
       network.on('click', params => {
         if (params.nodes.length) {
@@ -706,11 +750,11 @@
   async function initAuth(){
     if (!sb) { showGate('Supabase не настроен — вход невозможен.'); return; }
     const { data: { session } } = await sb.auth.getSession();
-    if (session) { hideGate(); showUser(session.user); openModal(); }
+    if (session) { hideGate(); showUser(session.user); openModal(); warmup(); }
     else { showGate(); }
 
     sb.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) { hideGate(); showUser(session.user); openModal(); }
+      if (event === 'SIGNED_IN' && session) { hideGate(); showUser(session.user); openModal(); warmup(); }
       if (event === 'SIGNED_OUT') { location.reload(); }
     });
   }

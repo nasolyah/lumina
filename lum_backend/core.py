@@ -1,8 +1,10 @@
 """
 Lum / Lumina — ядро GraphRAG пайплайна (веб-версия).
 
+Провайдер LLM — Google Gemini (AI Studio), endpoint generateContent.
+
 Отличия от консольного graphrag_vectors.py:
-  • Ключ Groq читается из переменной окружения GROQ_API_KEY (не хардкод).
+  • Ключ читается из переменной окружения GEMINI_API_KEY (не хардкод).
   • Убраны print-спам, запись в файлы и matplotlib-визуализация — это не нужно API.
   • run_pipeline() возвращает чистый dict, готовый к отдаче как JSON.
   • Добавлен "explain path" — какие узлы/рёбра привели к ответу (для подсветки в графе).
@@ -12,6 +14,8 @@ Lum / Lumina — ядро GraphRAG пайплайна (веб-версия).
        → глобальная память (LIGHT) → векторный поиск топ-K
        → ответ + схема (POWER)
 """
+
+from __future__ import annotations
 
 import re
 import json
@@ -23,28 +27,36 @@ from collections import defaultdict
 
 # ─── КОНФИГ ───────────────────────────────────────────────────────────────────
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
+GEMINI_API_KEY  = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_URL_TMPL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
-# Основные модели. Значения по умолчанию — актуальные мощные модели Groq
-# (llama-3.1-8b / llama-3.3-70b объявлены Groq устаревшими в июне 2026).
-# ВАЖНО: сверь точные строки-идентификаторы в console.groq.com/docs/models —
-# каталог Groq меняется часто.
-LIGHT_MODEL  = os.environ.get("LIGHT_MODEL", "openai/gpt-oss-20b")
-POWER_MODEL  = os.environ.get("POWER_MODEL", "openai/gpt-oss-120b")
+# Модели Gemini (Google AI Studio). Всё через env — при смене каталога код не трогаем.
+#   LIGHT — извлечение сущностей и память (много вызовов, должно быть дёшево).
+#   POWER — связывание и финальный ответ (нужно качество).
+# Дефолты выбраны под минимальную стоимость демо:
+#   Flash-Lite ($0.10/$0.40 за 1M ток.) на извлечение,
+#   Flash      ($0.30/$2.50 за 1M ток.) на ответ.
+# Для максимального качества на самом питче можно поставить POWER_MODEL=gemini-2.5-pro.
+LIGHT_MODEL  = os.environ.get("LIGHT_MODEL", "gemini-2.5-flash-lite")
+POWER_MODEL  = os.environ.get("POWER_MODEL", "gemini-2.5-flash")
 
-# Fallback-модели: если основная вернула ошибку/недоступна, пробуем эти по порядку.
-# Спасает демо, если конкретная модель на Groq икнула. Список через запятую в env.
-LIGHT_FALLBACKS = [m.strip() for m in os.environ.get(
-    "LIGHT_FALLBACKS", "llama-3.1-8b-instant").split(",") if m.strip()]
-POWER_FALLBACKS = [m.strip() for m in os.environ.get(
-    "POWER_FALLBACKS", "qwen/qwen3.6-27b,llama-3.3-70b-versatile").split(",") if m.strip()]
+# Потолок выходных токенов одного ответа модели.
+MAX_OUTPUT_TOKENS = int(os.environ.get("MAX_OUTPUT_TOKENS", "1200"))
+
+# "Мышление" Gemini 2.5 тратит выходные токены. Для JSON-задач оно не нужно —
+# по умолчанию выключаем (0): дешевле и предсказуемее (не съедает лимит на текст).
+# ВНИМАНИЕ: у gemini-2.5-pro мышление полностью выключить нельзя — там минимум 128.
+THINKING_BUDGET = int(os.environ.get("THINKING_BUDGET", "0"))
+
+# Сколько раз повторять вызов при транзиентной ошибке (429/5xx, «high demand»).
+# Если Gemini штормит прямо перед демо — подними, напр. LLM_RETRIES=5.
+RETRIES = int(os.environ.get("LLM_RETRIES", "3"))
 
 CHUNK_SIZE   = int(os.environ.get("CHUNK_SIZE", "300"))
 TOP_K        = int(os.environ.get("TOP_K", "3"))
 
-# Пауза между вызовами модели при извлечении. На платном тарифе лимиты выше,
-# поэтому по умолчанию небольшая (быстрее демо). На free-tier подними до 2.
+# Пауза между вызовами модели при извлечении. На бесплатном тарифе Gemini лимит
+# по запросам в минуту (RPM) ниже — подними до 2-4. На платном хватает небольшой.
 CHUNK_DELAY  = float(os.environ.get("CHUNK_DELAY", "0.5"))
 
 
@@ -52,86 +64,80 @@ class PipelineError(Exception):
     """Ошибка выполнения пайплайна, которую отдаём клиенту как 4xx/5xx."""
 
 
-# ─── ВЫЗОВ LLM ─────────────────────────────────────────────────────────────────
+# ─── ВЫЗОВ LLM (Gemini generateContent) ──────────────────────────────────────
 
-def _call_one_model(system: str, user: str, model: str, retries: int = 3) -> str:
-    """Один вызов ОДНОЙ модели с ретраями на rate-limit и таймаут.
-    Бросает PipelineError, если модель так и не ответила."""
-    if not GROQ_API_KEY:
-        raise PipelineError("GROQ_API_KEY не задан в переменных окружения")
+def call_llm(system: str, user: str, model: str = POWER_MODEL, retries: int = RETRIES) -> str:
+    """Один вызов Gemini с ретраями на rate-limit (429) и таймаут.
+    Без fallback-моделей: если модель недоступна — бросаем понятную PipelineError."""
+    if not GEMINI_API_KEY:
+        raise PipelineError("GEMINI_API_KEY не задан в переменных окружения")
+
+    url = GEMINI_URL_TMPL.format(model=model)
+    gen_config = {
+        "maxOutputTokens": MAX_OUTPUT_TOKENS,
+        "temperature": 0.2,
+    }
+    # gemini-2.5-pro не умеет thinkingBudget=0 (минимум 128): если для pro задан 0,
+    # не шлём thinkingConfig вовсе — модель выберет бюджет сама (иначе был бы 400).
+    # Для flash/flash-lite budget=0 корректно выключает «мышление».
+    if not ("pro" in model.lower() and THINKING_BUDGET <= 0):
+        gen_config["thinkingConfig"] = {"thinkingBudget": THINKING_BUDGET}
+    body = {
+        "system_instruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": user}]}],
+        "generationConfig": gen_config,
+    }
 
     for attempt in range(retries + 1):
         try:
             r = requests.post(
-                GROQ_URL,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {GROQ_API_KEY}",
-                },
-                json={
-                    "model": model,
-                    "max_tokens": 800,
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user",   "content": user},
-                    ],
-                },
+                url,
+                params={"key": GEMINI_API_KEY},
+                headers={"Content-Type": "application/json"},
+                json=body,
                 timeout=60,
             )
             data = r.json()
             if not r.ok:
                 msg = data.get("error", {}).get("message", "API error")
-                lower = msg.lower()
-                is_rate_limit = "rate limit" in lower or "rate_limit" in lower or "tpm" in lower
-                if is_rate_limit and attempt < retries:
-                    wait = 12.0
-                    m = re.search(r"try again in ([0-9]+(?:\.[0-9]+)?)s", msg, re.IGNORECASE)
-                    if m:
-                        wait = float(m.group(1)) + 3.0
+                # Транзиентные ошибки ретраим: 429 (лимит/квота) и 5xx (перегрузка
+                # модели «high demand», временная недоступность). Раз fallback-моделей
+                # нет — это главная страховка демо от кратких перебоев Gemini.
+                if (r.status_code == 429 or r.status_code >= 500) and attempt < retries:
+                    wait = 6.0 + attempt * 4.0          # бэкофф для 5xx/перегрузки
+                    if r.status_code == 429:
+                        m = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*s", msg)
+                        if m:
+                            wait = float(m.group(1)) + 2.0
                     time.sleep(wait)
                     continue
-                raise PipelineError(msg)
-            return data["choices"][0]["message"]["content"]
+                raise PipelineError(f"Gemini API ({model}): {msg}")
+
+            # запрос мог быть отклонён фильтрами ещё до генерации
+            block = (data.get("promptFeedback") or {}).get("blockReason")
+            if block:
+                raise PipelineError(f"Gemini заблокировал запрос ({block})")
+
+            candidates = data.get("candidates") or []
+            if not candidates:
+                raise PipelineError(f"Gemini ({model}) вернул пустой ответ")
+            cand = candidates[0]
+            parts = (cand.get("content") or {}).get("parts") or []
+            text = "".join(p.get("text", "") for p in parts).strip()
+            if not text:
+                reason = cand.get("finishReason", "UNKNOWN")
+                # MAX_TOKENS здесь чаще всего значит, что весь лимит съело "мышление":
+                # увеличь MAX_OUTPUT_TOKENS или поставь THINKING_BUDGET=0.
+                raise PipelineError(f"Gemini ({model}) не вернул текст (finishReason={reason})")
+            return text
         except requests.exceptions.Timeout:
             if attempt < retries:
                 time.sleep(4 + attempt * 3)
                 continue
-            raise PipelineError(f"Таймаут запроса к Groq API (модель {model})")
+            raise PipelineError(f"Таймаут запроса к Gemini API (модель {model})")
         except requests.exceptions.RequestException as e:
-            raise PipelineError(f"Сетевая ошибка при обращении к Groq: {e}")
+            raise PipelineError(f"Сетевая ошибка при обращении к Gemini: {e}")
     raise PipelineError(f"Все попытки обращения к модели {model} исчерпаны")
-
-
-def call_llm(system: str, user: str, model: str = POWER_MODEL,
-             fallbacks: list[str] | None = None, retries: int = 3) -> str:
-    """
-    Вызывает модель, а при её недоступности — по очереди fallback-модели.
-    Если fallbacks не переданы, сами подбираем по «весу» модели:
-    POWER_MODEL → POWER_FALLBACKS, иначе → LIGHT_FALLBACKS.
-    Это страховка для живого демо: одна икнувшая модель не роняет весь прогон.
-    """
-    if not GROQ_API_KEY:
-        raise PipelineError("GROQ_API_KEY не задан в переменных окружения")
-
-    if fallbacks is None:
-        fallbacks = POWER_FALLBACKS if model == POWER_MODEL else LIGHT_FALLBACKS
-
-    # порядок попыток: основная модель, затем fallback'и (без дублей)
-    chain = [model] + [m for m in fallbacks if m != model]
-
-    last_error: Exception | None = None
-    for i, m in enumerate(chain):
-        try:
-            return _call_one_model(system, user, m, retries=retries)
-        except PipelineError as e:
-            last_error = e
-            # нет ключа — сменой модели не лечится, дальше не пробуем
-            if "GROQ_API_KEY" in str(e):
-                raise
-            # иначе пробуем следующую модель в цепочке
-            if i < len(chain) - 1:
-                continue
-    raise PipelineError(f"Все модели недоступны. Последняя ошибка: {last_error}")
 
 
 # ─── ВЕКТОРЫ (hash-based эмбеддинги без внешних библиотек) ────────────────────
@@ -171,11 +177,7 @@ def step1_chunk(text: str) -> list[str]:
 
 # ─── ШАГ 2: ИЗВЛЕЧЕНИЕ СУЩНОСТЕЙ ─────────────────────────────────────────────
 
-def step2_extract_entities(chunks: list[str]) -> list[dict]:
-    all_entities = []
-    for i, chunk in enumerate(chunks):
-        raw = call_llm(
-            system="""Извлеки сущности и связи из научного текста.
+_EXTRACT_SYSTEM = """Извлеки сущности и связи из научного текста.
 Ответь ТОЛЬКО валидным JSON без markdown:
 {
   "entities": [
@@ -185,11 +187,17 @@ def step2_extract_entities(chunks: list[str]) -> list[dict]:
     {"from": "id", "to": "id", "label": "тип связи"}
   ]
 }
-Максимум 8 сущностей, 6 связей. Только важные.""",
-            user=f"Текст:\n{chunk}",
-            model=LIGHT_MODEL,
-        )
+Максимум 8 сущностей, 6 связей. Только важные."""
+
+
+def step2_extract_entities(chunks: list[str]) -> list[dict]:
+    all_entities = []
+    for i, chunk in enumerate(chunks):
+        # Сбойный чанк (сеть/лимит/битый JSON) не должен ронять весь прогон.
+        # Без fallback-моделей это единственная страховка на этапе извлечения:
+        # пропускаем чанк, остальные обрабатываем как обычно.
         try:
+            raw = call_llm(system=_EXTRACT_SYSTEM, user=f"Текст:\n{chunk}", model=LIGHT_MODEL)
             clean = re.sub(r"```json|```", "", raw).strip()
             parsed = json.loads(clean)
             for e in parsed.get("entities", []):
@@ -199,8 +207,8 @@ def step2_extract_entities(chunks: list[str]) -> list[dict]:
                 r["from"] = f"c{i}_{r['from']}"
                 r["to"]   = f"c{i}_{r['to']}"
             all_entities.append(parsed)
-        except json.JSONDecodeError:
-            pass  # пропускаем битый чанк, не роняем весь прогон
+        except (PipelineError, json.JSONDecodeError):
+            pass  # пропускаем сбойный чанк
         if CHUNK_DELAY:
             time.sleep(CHUNK_DELAY)
     return all_entities
@@ -419,6 +427,10 @@ def run_pipeline(text: str, query: str) -> dict:
         raise PipelineError("Пустой текст для анализа")
     if not query or not query.strip():
         raise PipelineError("Пустой запрос")
+    # Проверяем ключ до извлечения: иначе ошибка "нет ключа" утонет в пер-чанковом
+    # skip (см. step2) и превратится в невнятное "не удалось извлечь сущности".
+    if not GEMINI_API_KEY:
+        raise PipelineError("GEMINI_API_KEY не задан в переменных окружения")
 
     chunks      = step1_chunk(text)
     extracted   = step2_extract_entities(chunks)
