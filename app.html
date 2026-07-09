@@ -419,8 +419,8 @@
 <script>
   // ── КОНФИГ ──
   // Укажи URL задеплоенного бэкенда (Render). Для локального теста: http://localhost:8000
-  // ⚠️ ПОСЛЕ ДЕПЛОЯ впиши сюда URL своего бэкенда на Render:
-  const PROD_API_BASE = 'https://lum-api.onrender.com';   // ← ЗАМЕНИ на свой адрес
+  // URL бэкенда на Render (боевой):
+  const PROD_API_BASE = 'https://lumina-kwlr.onrender.com';
   // Локально (localhost / открытый файл) — localhost:8000; на GitHub Pages — Render.
   const _isLocal = ['localhost', '127.0.0.1', ''].includes(location.hostname);
   const API_BASE = window.LUM_API_BASE || (_isLocal ? 'http://localhost:8000' : PROD_API_BASE);
