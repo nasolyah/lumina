@@ -410,6 +410,7 @@
         </div>
       </div>
       <div class="hint">Совет: чем содержательнее текст, тем богаче граф. Оптимально — 300–3000 слов.</div>
+      <div class="hint" id="limitsInfo">Лимиты: текст до 100 000 символов · файлы .txt, .md, .pdf до 15 МБ</div>
       <div class="actions">
         <button class="btn primary" id="analyzeBtn">Построить граф</button>
       </div>
@@ -454,7 +455,17 @@
   let _warmed = false;
   function warmup(){
     if (_warmed) return; _warmed = true;
-    fetch(API_BASE + '/api/health').catch(() => {});
+    // прогреваем сервис и заодно подтягиваем реальные лимиты в модалку
+    fetch(API_BASE + '/api/health')
+      .then(r => r.json())
+      .then(h => {
+        const el = $('limitsInfo');
+        if (el && h && h.max_text_chars) {
+          const files = (h.accepted_files || ['.txt', '.md', '.pdf']).join(', ');
+          el.textContent = `Лимиты: текст до ${h.max_text_chars.toLocaleString('ru')} символов · файлы ${files} до ${h.max_pdf_mb} МБ`;
+        }
+      })
+      .catch(() => {});
   }
 
   const TYPE_COLORS = {
