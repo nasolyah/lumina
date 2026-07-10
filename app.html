@@ -509,6 +509,7 @@
   let currentText = '';      // текст загруженного источника
   let network = null;        // экземпляр vis-network
   let nodesDS = null, edgesDS = null;
+  let nodeById = {};         // id → узел ТЕКУЩЕГО графа (для клика/модалки; обновляется на каждый рендер)
   // ── состояние сохранённого чата ──
   let currentChatId = null;  // id строки в Supabase (null = новый несохранённый)
   let chatMessages = [];     // переписка для сохранения: {role:'user',text} | {role:'bot',answer,explanation}
@@ -675,6 +676,9 @@
   // ── ГРАФ ──
   function renderGraph(graph){
     $('legend').classList.remove('hidden');
+    // индекс узлов текущего графа — чтобы клик по узлу работал и на 2-м, 3-м графе
+    nodeById = {};
+    graph.nodes.forEach(n => { nodeById[n.id] = n; });
 
     // ── Остовное дерево (BFS) → строгая иерархия слева-направо, как в mind-map. ──
     // Граф от модели — «звезда» с хабом и перекрёстными связями; чтобы он читался
@@ -791,7 +795,7 @@
       });
       network.on('click', params => {
         if (params.nodes.length) {
-          const n = graph.nodes.find(x => x.id === params.nodes[0]);
+          const n = nodeById[params.nodes[0]];
           if (n) openNodeModal(n);
         }
       });
