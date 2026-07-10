@@ -115,6 +115,10 @@ def health():
         "power_model": core.POWER_MODEL,
         "chunk_size": core.CHUNK_SIZE,
         "top_k": core.TOP_K,
+        # лимиты — чтобы их можно было проверить на живом сервере
+        "max_text_chars": MAX_TEXT_CHARS,
+        "max_pdf_mb": MAX_PDF_BYTES // (1024 * 1024),
+        "accepted_files": [".txt", ".md", ".pdf"],
     }
 
 
