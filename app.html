@@ -325,10 +325,17 @@
   .drawer-head h3 { margin: 0; font-size: 16px; }
   .drawer-close { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1; }
   .chats-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
-  .chat-item { padding: 10px 12px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+  .chat-item { padding: 10px 12px; border-radius: 8px; cursor: pointer; border: 1px solid transparent;
+               display: flex; align-items: center; gap: 8px; }
   .chat-item:hover { background: rgba(108,99,255,.12); border-color: var(--border); }
+  .chat-item .body { flex: 1; min-width: 0; }
   .chat-item .t { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chat-item .d { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .chat-item .del { flex: none; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+                     background: none; border: none; color: var(--muted); font-size: 15px; cursor: pointer;
+                     border-radius: 6px; opacity: 0; transition: opacity .15s, background .15s, color .15s; }
+  .chat-item:hover .del { opacity: 1; }
+  .chat-item .del:hover { background: rgba(239,68,68,.15); color: #EF4444; }
   .chats-empty { color: var(--muted); font-size: 13px; padding: 16px; text-align: center; }
 </style>
 </head>
@@ -979,10 +986,32 @@
       if (!data || !data.length) { list.innerHTML = '<div class="chats-empty">Пока нет сохранённых чатов</div>'; return; }
       list.innerHTML = data.map(c => {
         const d = new Date(c.updated_at).toLocaleString('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-        return `<div class="chat-item" onclick="openChat('${c.id}')"><div class="t">${esc(c.title || 'Без названия')}</div><div class="d">${esc(d)}</div></div>`;
+        return `<div class="chat-item" onclick="openChat('${c.id}')">
+          <div class="body"><div class="t">${esc(c.title || 'Без названия')}</div><div class="d">${esc(d)}</div></div>
+          <button class="del" title="Удалить чат" onclick="event.stopPropagation(); deleteChat('${c.id}')">🗑</button>
+        </div>`;
       }).join('');
     } catch (e) { console.error('loadChatList', e); list.innerHTML = '<div class="chats-empty">Не удалось загрузить</div>'; }
   }
+
+  // удалить сохранённый чат (с подтверждением)
+  window.deleteChat = async (id) => {
+    if (!sb) return;
+    if (!confirm('Удалить этот чат безвозвратно?')) return;
+    try {
+      const { error } = await sb.from('chats').delete().eq('id', id);
+      if (error) throw error;
+      // если удалили открытый сейчас чат — сбрасываем на пустое состояние
+      if (currentChatId === id) {
+        currentChatId = null; chatMessages = []; lastGraph = null; currentText = '';
+        msgs.innerHTML = '';
+        $('stageEmpty').classList.remove('hidden');
+        if (network) network.setData({ nodes: new vis.DataSet([]), edges: new vis.DataSet([]) });
+        $('stats').innerHTML = '';
+      }
+      loadChatList();
+    } catch (e) { console.error('deleteChat', e); toast('Не удалось удалить чат.'); }
+  };
 
   // открыть сохранённый чат: восстановить текст, переписку и граф
   window.openChat = async (id) => {
