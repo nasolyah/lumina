@@ -312,6 +312,24 @@
     .chat { border-left: none; border-top: 1px solid var(--border); }
     :root { --chat-w: 100%; }
   }
+
+  /* ── ПАНЕЛЬ СОХРАНЁННЫХ ЧАТОВ ── */
+  .drawer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 40; }
+  .drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+  .drawer { position: fixed; top: 0; left: 0; height: 100%; width: 300px; max-width: 85vw;
+            background: var(--card); border-right: 1px solid var(--border);
+            transform: translateX(-100%); transition: transform .22s; z-index: 41;
+            display: flex; flex-direction: column; }
+  .drawer.open { transform: translateX(0); }
+  .drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--border); }
+  .drawer-head h3 { margin: 0; font-size: 16px; }
+  .drawer-close { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1; }
+  .chats-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .chat-item { padding: 10px 12px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+  .chat-item:hover { background: rgba(108,99,255,.12); border-color: var(--border); }
+  .chat-item .t { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-item .d { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .chats-empty { color: var(--muted); font-size: 13px; padding: 16px; text-align: center; }
 </style>
 </head>
 <body>
@@ -340,6 +358,7 @@
     <header class="topbar">
       <div class="brand"><span class="dot"></span> Lumina</div>
       <div class="stats" id="stats"></div>
+      <button class="btn ghost" id="myChatsBtn" style="padding:8px 14px;font-size:13px;">☰ Мои чаты</button>
       <button class="btn ghost" id="newSourceBtn" style="padding:8px 14px;font-size:13px;">Новый источник</button>
       <div class="user-chip" id="userChip">
         <span class="ava" id="userAva"></span>
@@ -347,6 +366,17 @@
         <button class="logout" id="logoutBtn" title="Выйти">выйти</button>
       </div>
     </header>
+
+    <!-- ПАНЕЛЬ СОХРАНЁННЫХ ЧАТОВ -->
+    <div class="drawer-backdrop" id="chatsBackdrop"></div>
+    <aside class="drawer" id="chatsDrawer">
+      <div class="drawer-head">
+        <h3>Мои чаты</h3>
+        <button class="drawer-close" id="chatsClose" aria-label="Закрыть">✕</button>
+      </div>
+      <button class="btn primary" id="newChatBtn" style="flex:none;margin:12px 14px;">+ Новый чат</button>
+      <div class="chats-list" id="chatsList"></div>
+    </aside>
 
     <!-- STAGE -->
     <main class="stage">
@@ -479,6 +509,10 @@
   let currentText = '';      // текст загруженного источника
   let network = null;        // экземпляр vis-network
   let nodesDS = null, edgesDS = null;
+  // ── состояние сохранённого чата ──
+  let currentChatId = null;  // id строки в Supabase (null = новый несохранённый)
+  let chatMessages = [];     // переписка для сохранения: {role:'user',text} | {role:'bot',answer,explanation}
+  let lastGraph = null;      // последний отрисованный граф/mindmap (для восстановления)
 
   // ── ЭЛЕМЕНТЫ ──
   const $ = id => document.getElementById(id);
@@ -579,6 +613,10 @@
     if (!text) { toast('Сначала вставьте текст или загрузите файл.'); return; }
     currentText = text;
 
+    // новый источник → новый чат: сбрасываем состояние и переписку
+    currentChatId = null; chatMessages = []; lastGraph = null;
+    msgs.innerHTML = '';
+
     closeModal();
     $('stageEmpty').classList.add('hidden');
     $('q').disabled = false; $('askBtn').disabled = false;
@@ -619,9 +657,11 @@
         addErrorMsg(data.detail || 'Не удалось обработать запрос.'); setAsk(true); return;
       }
 
-      renderGraph(data.mindmap || data.graph);
+      lastGraph = data.mindmap || data.graph;
+      renderGraph(lastGraph);
       renderStats(data.stats);
       addBotMsg(data);
+      saveChat();
     } catch (err) {
       thinkingEl.remove();
       addErrorMsg('Нет связи с сервером Lumina. Проверьте, что бэкенд запущен: ' + API_BASE);
@@ -781,16 +821,18 @@
   const msgs = $('messages');
   function scroll(){ msgs.scrollTop = msgs.scrollHeight; }
 
-  function addUserMsg(t){
+  function addUserMsg(t, noPush){
     const el = document.createElement('div'); el.className = 'msg user'; el.textContent = t;
     msgs.appendChild(el); scroll();
+    if (!noPush) chatMessages.push({ role: 'user', text: t });
   }
   function addThinking(){
     const el = document.createElement('div'); el.className = 'msg bot';
     el.innerHTML = `<div class="thinking"><span class="d"></span><span class="d"></span><span class="d"></span> Строю граф и рассуждаю…</div>`;
     msgs.appendChild(el); scroll(); return el;
   }
-  function addBotMsg(data){
+  function addBotMsg(data, noPush){
+    if (!noPush) chatMessages.push({ role: 'bot', answer: data.answer || {}, explanation: data.explanation || {} });
     const a = data.answer || {};
     const path = (data.explanation && data.explanation.path_nodes) || [];
     const intent = data.explanation && data.explanation.query_intent;
@@ -879,15 +921,85 @@
     await sb.auth.signOut();   // onAuthStateChange(SIGNED_OUT) перезагрузит страницу
   };
 
+  // ── СОХРАНЁННЫЕ ЧАТЫ (Supabase) ─────────────────────────────────────
+  const chatsDrawer = $('chatsDrawer'), chatsBackdrop = $('chatsBackdrop');
+  function openChatsDrawer(){ chatsDrawer.classList.add('open'); chatsBackdrop.classList.add('open'); loadChatList(); }
+  function closeChatsDrawer(){ chatsDrawer.classList.remove('open'); chatsBackdrop.classList.remove('open'); }
+  $('myChatsBtn').onclick = openChatsDrawer;
+  $('chatsClose').onclick = closeChatsDrawer;
+  chatsBackdrop.onclick = closeChatsDrawer;
+  $('newChatBtn').onclick = () => {
+    currentChatId = null; chatMessages = []; lastGraph = null; currentText = '';
+    msgs.innerHTML = '';
+    $('stageEmpty').classList.remove('hidden');
+    if (network) network.setData({ nodes: new vis.DataSet([]), edges: new vis.DataSet([]) });
+    $('stats').innerHTML = '';
+    closeChatsDrawer();
+    openModal();   // сразу предложить загрузить источник
+  };
+
+  // upsert текущего чата после каждого ответа
+  async function saveChat(){
+    if (!sb || !currentText || !chatMessages.length) return;
+    const firstUser = chatMessages.find(m => m.role === 'user' && !/^О чём этот текст/.test(m.text));
+    const title = ((firstUser && firstUser.text) || currentText).slice(0, 60);
+    const row = { title, source_text: currentText, messages: chatMessages, mindmap: lastGraph };
+    try {
+      if (currentChatId) {
+        await sb.from('chats').update({ ...row, updated_at: new Date().toISOString() }).eq('id', currentChatId);
+      } else {
+        const { data, error } = await sb.from('chats').insert(row).select('id').single();
+        if (!error && data) currentChatId = data.id;
+      }
+    } catch (e) { console.error('saveChat', e); }
+  }
+
+  // список сохранённых чатов в панели
+  async function loadChatList(){
+    if (!sb) return;
+    const list = $('chatsList');
+    try {
+      const { data, error } = await sb.from('chats')
+        .select('id,title,updated_at').order('updated_at', { ascending: false });
+      if (error) throw error;
+      if (!data || !data.length) { list.innerHTML = '<div class="chats-empty">Пока нет сохранённых чатов</div>'; return; }
+      list.innerHTML = data.map(c => {
+        const d = new Date(c.updated_at).toLocaleString('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        return `<div class="chat-item" onclick="openChat('${c.id}')"><div class="t">${esc(c.title || 'Без названия')}</div><div class="d">${esc(d)}</div></div>`;
+      }).join('');
+    } catch (e) { console.error('loadChatList', e); list.innerHTML = '<div class="chats-empty">Не удалось загрузить</div>'; }
+  }
+
+  // открыть сохранённый чат: восстановить текст, переписку и граф
+  window.openChat = async (id) => {
+    if (!sb) return;
+    try {
+      const { data, error } = await sb.from('chats').select('*').eq('id', id).single();
+      if (error || !data) return;
+      currentChatId = data.id;
+      currentText = data.source_text || '';
+      chatMessages = Array.isArray(data.messages) ? data.messages : [];
+      msgs.innerHTML = '';
+      for (const m of chatMessages) {
+        if (m.role === 'user') addUserMsg(m.text, /*noPush*/true);
+        else if (m.role === 'bot') addBotMsg({ answer: m.answer, explanation: m.explanation }, /*noPush*/true);
+      }
+      $('stageEmpty').classList.add('hidden');
+      if (data.mindmap) { lastGraph = data.mindmap; renderGraph(data.mindmap); }
+      $('q').disabled = false; $('askBtn').disabled = false;
+      closeChatsDrawer();
+    } catch (e) { console.error('openChat', e); }
+  };
+
   // Сессия на входе + реакция на логин/логаут
   async function initAuth(){
     if (!sb) { showGate('Supabase не настроен — вход невозможен.'); return; }
     const { data: { session } } = await sb.auth.getSession();
-    if (session) { hideGate(); showUser(session.user); warmup(); }
+    if (session) { hideGate(); showUser(session.user); warmup(); loadChatList(); }
     else { showGate(); }
 
     sb.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) { hideGate(); showUser(session.user); warmup(); }
+      if (event === 'SIGNED_IN' && session) { hideGate(); showUser(session.user); warmup(); loadChatList(); }
       if (event === 'SIGNED_OUT') { location.reload(); }
     });
   }
