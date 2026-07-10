@@ -500,6 +500,7 @@ def flatten_mindmap(mm: dict, graph: dict, in_answer_names: set[str],
         nodes.append({"id": nid, "name": name.strip(), "type": ntype,
                       "description": meta.get("description", ""),
                       "snippet": meta.get("snippet", ""),
+                      "world": meta.get("world", ""),
                       "mentions": 1, "in_answer": is_ans(name)})
         return nid
 
@@ -563,8 +564,40 @@ def build_concept_info(text: str, graph: dict) -> dict:
         info[nn] = {
             "description": n.get("description", ""),
             "snippet": " ".join(hits[:2]).strip()[:600],
+            "world": "",   # краткая справка «из общих знаний», заполняется add_world_info
         }
     return info
+
+
+def add_world_info(info: dict, graph: dict) -> None:
+    """Одним запросом просит модель дать КРАТКОЕ общее определение каждого понятия
+    (из общих знаний, а не из загруженного текста) — для доп-справки в модалке узла.
+    Мутирует info на месте. Мягкая деградация: при сбое просто оставляет world пустым."""
+    names = [n["name"] for n in sorted(graph["nodes"].values(),
+                                       key=lambda x: x["mentions"], reverse=True)[:35]]
+    if not names:
+        return
+    listing = "\n".join(f"- {nm}" for nm in names)
+    raw = call_llm(
+        system="""Дай КРАТКОЕ общее определение каждого понятия из списка — 1-2 предложения,
+простыми словами, из общих знаний (НЕ из какого-либо текста). Ответь ТОЛЬКО валидным
+JSON без markdown: {"Понятие": "краткое определение", ...}. Ключи — ДОСЛОВНО как в списке.""",
+        user=f"ПОНЯТИЯ:\n{listing}",
+        model=POWER_MODEL,
+        max_tokens=2500,
+    )
+    try:
+        data = parse_json_lenient(raw)
+    except json.JSONDecodeError:
+        return
+    if not isinstance(data, dict):
+        return
+    for name, expl in data.items():
+        if not isinstance(expl, str):
+            continue
+        k = str(name).strip().lower()
+        if k in info:
+            info[k]["world"] = expl.strip()[:600]
 
 
 # ─── СЕРИАЛИЗАЦИЯ ГРАФА ДЛЯ ФРОНТА ────────────────────────────────────────────
@@ -582,6 +615,7 @@ def serialize_graph(graph: dict, top_ids: set[str], info: dict | None = None) ->
             "type":        n["type"],
             "description": n["description"],
             "snippet":     info.get(nn, {}).get("snippet", ""),
+            "world":       info.get(nn, {}).get("world", ""),
             "mentions":    n["mentions"],
             "in_answer":   n["id"] in top_ids,   # ← фронт подсветит эти узлы
         })
@@ -634,6 +668,12 @@ def run_pipeline(text: str, query: str) -> dict:
     in_answer_names = {n["name"].strip().lower() for n in top_nodes}
     # фрагменты исходника по каждому понятию (для модалки по клику на узел)
     info = build_concept_info(text, graph)
+    # краткая справка о понятиях «из общих знаний» (доп-инфа в модалке узла).
+    # Мягкая деградация: если шаг упал — просто без справки, фрагмент источника остаётся.
+    try:
+        add_world_info(info, graph)
+    except PipelineError:
+        pass
 
     # Mind-map: иерархическое дерево понятий (то, что рисуется на фронте).
     # Мягкая деградация: если шаг упал (перегрузка/битый JSON) — mindmap=None,

@@ -459,6 +459,10 @@
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7C6FF0;margin-bottom:6px;">Фрагмент источника</div>
         <div id="nodeSnippet" style="background:rgba(20,20,51,0.6);border-left:3px solid #7C6FF0;border-radius:6px;padding:12px 14px;color:#E2E8F0;font-size:13.5px;line-height:1.55;white-space:pre-wrap;"></div>
       </div>
+      <div id="nodeWorldWrap" style="margin-top:14px;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#22D3EE;margin-bottom:6px;">Кратко о понятии</div>
+        <div id="nodeWorld" style="background:rgba(20,40,51,0.5);border-left:3px solid #22D3EE;border-radius:6px;padding:12px 14px;color:#E2E8F0;font-size:13.5px;line-height:1.55;"></div>
+      </div>
     </div>
   </div>
 
@@ -589,15 +593,21 @@
     const desc = (n.description || '').trim();
     $('nodeDesc').textContent = desc;
     $('nodeDesc').style.display = desc ? '' : 'none';
+    // 1) фрагмент из загруженного текста (если понятие там встречается)
     const snip = (n.snippet || '').trim();
     if (snip) {
       $('nodeSnippet').textContent = snip;
       $('nodeSnippetWrap').style.display = '';
-    } else if (n.type === 'branch') {
-      $('nodeSnippetWrap').style.display = 'none';   // ветка — обобщение, фрагмента нет
     } else {
-      $('nodeSnippet').textContent = 'В тексте это понятие в явном виде не встречается.';
-      $('nodeSnippetWrap').style.display = '';
+      $('nodeSnippetWrap').style.display = 'none';   // нет в тексте — секцию не показываем
+    }
+    // 2) краткая справка о понятии (из общих знаний модели), после текста
+    const world = (n.world || '').trim();
+    if (world && n.type !== 'branch') {
+      $('nodeWorld').textContent = world;
+      $('nodeWorldWrap').style.display = '';
+    } else {
+      $('nodeWorldWrap').style.display = 'none';
     }
     nodeOverlay.classList.add('open');
   }
