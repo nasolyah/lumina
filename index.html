@@ -325,6 +325,84 @@
     color: var(--muted);
   }
 
+  /* ── PRICING ── */
+  .pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 340px));
+    gap: 24px;
+  }
+  @media (max-width: 760px) { .pricing-grid { grid-template-columns: 1fr; max-width: 380px; } }
+
+  .price-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 36px 32px;
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.25s, transform 0.25s;
+  }
+  .price-card:hover { transform: translateY(-3px); }
+  .price-card.featured {
+    border-color: rgba(108,99,255,0.5);
+    box-shadow: 0 0 40px rgba(108,99,255,0.12);
+  }
+
+  .price-badge {
+    align-self: flex-start;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    border-radius: 999px;
+    margin-bottom: 20px;
+  }
+  .price-badge.active { background: rgba(52,211,153,0.14); color: #34D399; border: 1px solid rgba(52,211,153,0.3); }
+  .price-badge.soon   { background: rgba(108,99,255,0.14); color: var(--glow); border: 1px solid var(--border); }
+
+  .price-card h3 {
+    font-family: 'Sora', sans-serif;
+    font-weight: 700;
+    font-size: 1.15rem;
+    color: var(--white);
+    margin-bottom: 6px;
+  }
+  .price-card .price-sub { font-size: 0.85rem; color: var(--muted); margin-bottom: 22px; }
+
+  .price-amount {
+    font-family: 'Sora', sans-serif;
+    font-weight: 700;
+    font-size: 2.4rem;
+    color: var(--white);
+    margin-bottom: 24px;
+    letter-spacing: -0.02em;
+  }
+  .price-amount span { font-size: 0.95rem; font-weight: 500; color: var(--muted); }
+
+  .price-features {
+    list-style: none;
+    margin: 0 0 28px;
+    padding: 0;
+    flex: 1;
+  }
+  .price-features li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 0.88rem;
+    color: var(--text);
+    line-height: 1.5;
+    margin-bottom: 13px;
+  }
+  .price-features li svg { flex-shrink: 0; margin-top: 2px; color: var(--glow); }
+
+  .price-card .btn-primary, .price-card .btn-ghost {
+    width: 100%;
+    text-align: center;
+    padding: 12px 20px;
+  }
+
   /* ── HOW IT WORKS ── */
   .how-section {
     background: var(--surface);
@@ -599,7 +677,7 @@
     <ul class="nav-links">
       <li><a href="#features">Возможности</a></li>
       <li><a href="#how">Как это работает</a></li>
-      <li><a href="#">Цены</a></li>
+      <li><a href="#pricing">Цены</a></li>
     </ul>
     <div class="nav-actions">
       <button class="btn-logout" id="logoutBtn" onclick="handleSignOut()">
@@ -732,10 +810,45 @@
     </section>
   </div>
 
+  <!-- PRICING -->
+  <section class="section" id="pricing">
+    <div class="section-label">Цены</div>
+    <h2 class="section-title">Начните бесплатно, растите по мере надобности</h2>
+
+    <div class="pricing-grid">
+      <div class="price-card">
+        <div class="price-badge active">Доступно сейчас</div>
+        <h3>Free</h3>
+        <div class="price-sub">Чтобы попробовать без риска</div>
+        <div class="price-amount">$0</div>
+        <ul class="price-features">
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> 5 построений графа знаний</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Диалог с источником</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Explainable-ответы с подсветкой пути</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Сохранение истории чатов</li>
+        </ul>
+        <button class="btn-primary" onclick="openSidebar()">Начать бесплатно</button>
+      </div>
+
+      <div class="price-card featured">
+        <div class="price-badge soon">Скоро</div>
+        <h3>Pro</h3>
+        <div class="price-sub">Для тех, кому нужно больше</div>
+        <div class="price-amount">$5<span>/месяц</span></div>
+        <ul class="price-features">
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Неограниченные построения графа</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Всё из плана Free</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Приоритет в очереди на обработку</li>
+        </ul>
+        <a class="btn-ghost" style="width:100%;text-align:center;padding:12px 20px;display:block;box-sizing:border-box;" href="mailto:markingmark33@gmail.com?subject=Lumina%20Pro">Оставить заявку</a>
+      </div>
+    </div>
+  </section>
+
   <!-- CTA -->
   <div class="cta-banner">
     <h2>Готовы работать со знаниями умнее?</h2>
-    <p>Бесплатный старт без карты. Первые 3 ноутбука — навсегда бесплатно.</p>
+    <p>Бесплатный старт без карты. Первые 5 построений графа — бесплатно.</p>
     <button class="btn-primary btn-start" onclick="openSidebar()" style="padding:15px 36px;font-size:1rem;border-radius:14px;">
       Попробовать Lumina →
     </button>
