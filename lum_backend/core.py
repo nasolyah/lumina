@@ -22,7 +22,13 @@ import json
 import time
 import math
 import os
+import logging
 import requests
+
+# basicConfig идемпотентен (no-op, если хендлер уже есть — напр. настроен в main.py);
+# это позволяет видеть логи и при отдельном запуске core.py (напр. passkey_test.py).
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("lumina.core")
 from collections import defaultdict
 
 # ─── КОНФИГ ───────────────────────────────────────────────────────────────────
@@ -234,8 +240,10 @@ def step2_extract_entities(chunks: list[str]) -> list[dict]:
                 r["from"] = f"c{i}_{r['from']}"
                 r["to"]   = f"c{i}_{r['to']}"
             all_entities.append(parsed)
-        except (PipelineError, json.JSONDecodeError):
-            pass  # пропускаем сбойный чанк
+        except (PipelineError, json.JSONDecodeError) as e:
+            # Логируем причину сбоя чанка — иначе "не удалось извлечь сущности"
+            # наверху ничего не говорит о том, что именно упало (Gemini/парсинг).
+            logger.warning("step2: чанк %d пропущен (%s): %s", i, type(e).__name__, e)
         if CHUNK_DELAY:
             time.sleep(CHUNK_DELAY)
     return all_entities
