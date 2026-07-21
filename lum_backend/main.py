@@ -13,11 +13,18 @@ Lum / Lumina — FastAPI-обёртка над GraphRAG пайплайном.
 
 import io
 import os
+import logging
 from typing import Optional
 import jwt
 from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+# Render показывает stdout/stderr как Application logs — а uvicorn access-логи
+# ("POST /api/analyze 400") не несут причины ошибки. Логируем детали сами,
+# чтобы инциденты можно было разбирать по логам Render, а не переписке/скриншотам.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("lumina")
 from pydantic import BaseModel, Field
 
 import core
@@ -130,6 +137,7 @@ def analyze(req: AnalyzeRequest, user: dict = Depends(require_user)):
     Требует валидный Supabase-JWT (см. require_user).
     """
     if len(req.text) > MAX_TEXT_CHARS:
+        logger.warning("analyze: текст превышает лимит (%d симв.)", len(req.text))
         raise HTTPException(
             status_code=400,
             detail=f"Текст слишком большой ({len(req.text)} симв., максимум {MAX_TEXT_CHARS}).",
@@ -137,10 +145,13 @@ def analyze(req: AnalyzeRequest, user: dict = Depends(require_user)):
     try:
         return core.run_pipeline(text=req.text, query=req.query)
     except core.PipelineError as e:
-        # Ожидаемые ошибки пайплайна (пустой ввод, нет ключа, Gemini упал) → 400
+        # Ожидаемые ошибки пайплайна (пустой ввод, нет ключа, Gemini упал) → 400.
+        # Логируем текст ошибки — он же уходит в HTTP detail, но здесь виден в логах Render.
+        logger.error("analyze: PipelineError: %s", e)
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         # Непредвиденное → 500, но без утечки внутренних деталей наружу
+        logger.exception("analyze: непредвиденная ошибка")
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка: {type(e).__name__}")
 
 
