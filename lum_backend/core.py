@@ -111,10 +111,11 @@ def call_llm(system: str, user: str, model: str = POWER_MODEL, retries: int = RE
             if not r.ok:
                 msg = data.get("error", {}).get("message", "API error")
                 # Транзиентные ошибки ретраим: 429 (лимит/квота), 5xx (перегрузка
-                # «high demand») и 404 (у Gemini бывает мигающий 404 на generateContent,
-                # который проходит на повторе). Раз fallback-моделей нет — это главная
-                # страховка демо от кратких перебоев Gemini.
-                if (r.status_code in (404, 429) or r.status_code >= 500) and attempt < retries:
+                # «high demand»), 404 и 400 (у Gemini бывает мигающий 404/"invalid
+                # argument" на generateContent при абсолютно том же запросе — проходит
+                # на повторе). Раз fallback-моделей нет — это главная страховка демо
+                # от кратких перебоев Gemini.
+                if (r.status_code in (400, 404, 429) or r.status_code >= 500) and attempt < retries:
                     wait = 6.0 + attempt * 4.0          # бэкофф для 5xx/перегрузки
                     if r.status_code == 429:
                         m = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*s", msg)
@@ -430,60 +431,63 @@ def step6_generate_answer(memory: str, top_nodes: list[dict], query: str) -> dic
         return {"answer": raw.strip(), "summary": "", "key_points": []}
 
 
-# ─── ШАГ 7: MIND-MAP (иерархическое дерево понятий) ──────────────────────────
+# ─── ШАГ 7: MIND-MAP (реальная структура документа) ───────────────────────────
 #
-# Граф от извлечения — «звезда» (всё связано с центром), деревом не выглядит.
-# Здесь сильная модель раскладывает те же понятия в ИЕРАРХИЮ: тема → смысловые
-# ветки → листья, дробя богатые ветки вглубь. Это и рисуется на фронте mind-map'ом.
+# Раньше модель сама придумывала абстрактные категории поверх извлечённых сущностей
+# («Определение», «Компоненты»…) — неточно отражало документ. Теперь модель
+# сегментирует ИСХОДНЫЙ текст на его настоящие разделы/подразделы (реальные
+# заголовки, если есть в тексте, иначе — логичные тематические блоки) и цитирует
+# его ДОСЛОВНО — узел графа честно привязан к месту в источнике, а не к пересказу.
 
-_MINDMAP_SYSTEM = """Ты строишь mind-map (ментальную карту) научного текста — ИЕРАРХИЧЕСКОЕ дерево.
-Правила:
-- один корень — главная тема текста;
-- главные ветки — по смысловым блокам текста (напр.: происхождение, компоненты,
-  механизм, применение, история/люди, риски); ровно столько, сколько логично;
-- НЕ вешай много узлов в один ряд: если под веткой больше ~6 понятий — раздели
-  на под-ветки. Дерево растёт В ГЛУБИНУ, а не в ширину;
-- используй БОЛЬШИНСТВО понятий из списка (не выкидывай важные);
-- имя листа = само понятие, ДОСЛОВНО как в списке; короткие названия веток
-  (1-3 слова) можешь придумывать сам, но не дублируй ими корень;
-- глубина любая, насколько богат текст.
+_SECTIONS_SYSTEM = """Ты анализируешь структуру документа — раздели его на РЕАЛЬНЫЕ
+смысловые разделы, как оглавление книги.
+ПРАВИЛА:
+- Если в тексте ЕСТЬ явные заголовки/подзаголовки — используй их ДОСЛОВНО как title.
+- Если явных заголовков нет — определи по смыслу естественные тематические блоки и
+  дай каждому короткое название (2-5 слов), отражающее содержание.
+- Может быть иерархия (раздел → под-разделы), любая глубина, если текст того
+  требует. Короткий цельный раздел не дели без нужды — детей не давай.
+- Для КАЖДОГО раздела и под-раздела укажи:
+  * "excerpt" — 2-3 предложения ДОСЛОВНО из этой части текста (процитируй реальные
+    фразы, НЕ перефразируй) — суть раздела с первого взгляда;
+  * "full" — более полная дословная цитата этого раздела (5-10 предложений).
+- "root" — главная тема всего документа, коротко.
 Ответь ТОЛЬКО валидным JSON без markdown:
-{"root":"главная тема","children":[
-  {"name":"ветка","children":["лист",{"name":"под-ветка","children":["лист","лист"]}]}
-]}
-Лист — строка. Узел с детьми — объект {"name":..., "children":[...]}."""
+{"root":"главная тема",
+ "children":[
+   {"title":"...", "excerpt":"...", "full":"...",
+    "children":[{того же вида, любая глубина}]}
+ ]}
+Раздел без под-разделов — просто объект без "children"."""
 
 
-def step7_mindmap(memory: str, graph: dict, main_topic: str) -> dict | None:
-    """Просит сильную модель разложить понятия графа в иерархическое дерево.
-    Возвращает {"root":..., "children":[...]} или None, если не удалось."""
-    concepts = sorted(graph["nodes"].values(), key=lambda x: x["mentions"], reverse=True)
-    concept_lines = "\n".join(f"- {c['name']}" for c in concepts[:35])
+def step_document_sections(text: str, main_topic: str) -> dict | None:
+    """Просит сильную модель сегментировать ИСХОДНЫЙ текст на его настоящую
+    структуру (не понятия из графа, а сам документ). Возвращает
+    {"root":..., "children":[...]} или None, если не удалось."""
     raw = call_llm(
-        system=_MINDMAP_SYSTEM,
-        user=f"ГЛАВНАЯ ТЕМА (ориентир): {main_topic}\n\n"
-             f"ПОНЯТИЯ ИЗ ТЕКСТА:\n{concept_lines}\n\nКРАТКОЕ СОДЕРЖАНИЕ:\n{memory}",
+        system=_SECTIONS_SYSTEM,
+        user=f"ГЛАВНАЯ ТЕМА (ориентир): {main_topic}\n\nТЕКСТ:\n{text}",
         model=POWER_MODEL,
-        max_tokens=3000,   # дерево-JSON длиннее обычного ответа, даём запас
+        max_tokens=4000,   # узлы несут цитаты из текста — длиннее обычного ответа
     )
     try:
-        mm = parse_json_lenient(raw)
+        data = parse_json_lenient(raw)
     except json.JSONDecodeError:
         return None
-    return mm if isinstance(mm, dict) and mm.get("children") else None
+    return data if isinstance(data, dict) and data.get("children") else None
 
 
-def flatten_mindmap(mm: dict, graph: dict, in_answer_names: set[str],
-                    info: dict | None = None) -> dict:
-    """Разворачивает вложенное дерево в {nodes, edges, root} в том же формате,
-    что и граф, — фронт рисует его той же иерархической раскладкой.
-    Тип узла-ветки — 'branch'; листьям тип/описание/фрагмент берём из графа по имени."""
-    info = info or {}
-    name_type = {n["name"].strip().lower(): n["type"] for n in graph["nodes"].values()}
+def flatten_sections(data: dict, in_answer_names: set[str]) -> dict:
+    """Разворачивает вложенную структуру документа в {nodes, edges, root}.
+    Узел с детьми — 'branch' (категория, без цитаты), лист — 'section' (несёт
+    excerpt/full — дословную цитату исходника для показа на графе и в модалке).
+    in_answer — эвристика для подсветки пути к ответу: пересекается ли узел
+    с понятиями, которые нашёл векторный поиск (top_nodes)."""
     nodes, edges, used = [], [], set()
 
     def uid(name: str) -> str:
-        base = name.strip() or "?"
+        base = (name or "?").strip() or "?"
         key, i = base, 1
         while key in used:
             i += 1
@@ -491,57 +495,40 @@ def flatten_mindmap(mm: dict, graph: dict, in_answer_names: set[str],
         used.add(key)
         return key
 
-    def is_ans(name: str) -> bool:
-        return name.strip().lower() in in_answer_names
+    def is_ans(title: str, excerpt: str) -> bool:
+        blob = f"{title} {excerpt}".strip().lower()
+        return any(nm and nm in blob for nm in in_answer_names)
 
-    def add(name: str, ntype: str) -> str:
-        nid = uid(name)
-        meta = info.get(name.strip().lower(), {})
-        nodes.append({"id": nid, "name": name.strip(), "type": ntype,
-                      "description": meta.get("description", ""),
-                      "snippet": meta.get("snippet", ""),
-                      "world": meta.get("world", ""),
-                      "mentions": 1, "in_answer": is_ans(name)})
+    def add(title: str, ntype: str, excerpt: str = "", full: str = "") -> str:
+        nid = uid(title)
+        nodes.append({
+            "id": nid, "name": (title or "").strip(), "type": ntype,
+            "excerpt": (excerpt or "").strip()[:400],
+            "full": (full or excerpt or "").strip()[:1500],
+            "world": "",
+            "mentions": 1,
+            "in_answer": is_ans(title, excerpt),
+        })
         return nid
-
-    root_name = mm.get("root") or main_topic_fallback(graph)
-    root_norm = str(root_name).strip().lower()
 
     def walk(children, parent_id):
         for ch in children or []:
-            if isinstance(ch, str) and ch.strip():
-                if ch.strip().lower() == root_norm:   # не дублируем корень листом
-                    continue
-                cid = add(ch, name_type.get(ch.strip().lower(), "term"))
-                edges.append({"from": parent_id, "to": cid, "label": "", "in_answer": is_ans(ch)})
-            elif isinstance(ch, dict) and (ch.get("name") or "").strip():
-                nm = ch["name"]
-                if nm.strip().lower() == root_norm:
-                    continue
-                kids = ch.get("children")
-                ntype = "branch" if kids else name_type.get(nm.strip().lower(), "term")
-                cid = add(nm, ntype)
-                edges.append({"from": parent_id, "to": cid, "label": "", "in_answer": is_ans(nm)})
-                walk(kids, cid)
-
-    root_id = add(root_name, name_type.get(root_norm, "concept"))
-    # верхний уровень: узлы с детьми — ветки, одиночные строки — сразу листья
-    for ch in mm.get("children", []):
-        if isinstance(ch, dict) and (ch.get("name") or "").strip():
-            if ch["name"].strip().lower() == root_norm:   # ветка = корень → раскрыть под корнем
-                walk(ch.get("children"), root_id)
+            if not isinstance(ch, dict) or not (ch.get("title") or "").strip():
                 continue
-            cid = add(ch["name"], "branch")
-            edges.append({"from": root_id, "to": cid, "label": "", "in_answer": is_ans(ch["name"])})
-            walk(ch.get("children"), cid)
-        elif isinstance(ch, str) and ch.strip() and ch.strip().lower() != root_norm:
-            cid = add(ch, name_type.get(ch.strip().lower(), "term"))
-            edges.append({"from": root_id, "to": cid, "label": "", "in_answer": is_ans(ch)})
+            kids = ch.get("children") or []
+            ntype = "branch" if kids else "section"
+            cid = add(ch["title"], ntype, ch.get("excerpt", ""), ch.get("full", ""))
+            edges.append({"from": parent_id, "to": cid, "label": "",
+                          "in_answer": is_ans(ch.get("title", ""), ch.get("excerpt", ""))})
+            walk(kids, cid)
+
+    root_id = add(data.get("root") or "Документ", "branch")
+    walk(data.get("children"), root_id)
     return {"nodes": nodes, "edges": edges, "root": root_id}
 
 
 def main_topic_fallback(graph: dict) -> str:
-    """Название самого упоминаемого узла — запасной корень mind-map."""
+    """Название самого упоминаемого узла — запасной ориентир темы документа."""
     if not graph["nodes"]:
         return "Тема"
     return max(graph["nodes"].values(), key=lambda n: n["mentions"])["name"]
@@ -569,35 +556,44 @@ def build_concept_info(text: str, graph: dict) -> dict:
     return info
 
 
-def add_world_info(info: dict, graph: dict) -> None:
-    """Одним запросом просит модель дать КРАТКОЕ общее определение каждого понятия
-    (из общих знаний, а не из загруженного текста) — для доп-справки в модалке узла.
-    Мутирует info на месте. Мягкая деградация: при сбое просто оставляет world пустым."""
-    names = [n["name"] for n in sorted(graph["nodes"].values(),
-                                       key=lambda x: x["mentions"], reverse=True)[:35]]
+def _batch_world_info(names: list[str]) -> dict[str, str]:
+    """Одним запросом даёт краткое общее определение каждого имени из списка
+    (из общих знаний модели, не из загруженного текста). Возвращает
+    {имя.lower(): определение}. Мягкая деградация: при сбое — пустой dict.
+    Переиспользуется и для понятий графа, и для заголовков разделов mind-map."""
+    names = [n for n in names if n and n.strip()][:35]
     if not names:
-        return
+        return {}
     listing = "\n".join(f"- {nm}" for nm in names)
-    raw = call_llm(
-        system="""Дай КРАТКОЕ общее определение каждого понятия из списка — 1-2 предложения,
+    try:
+        raw = call_llm(
+            system="""Дай КРАТКОЕ общее определение каждого понятия из списка — 1-2 предложения,
 простыми словами, из общих знаний (НЕ из какого-либо текста). Ответь ТОЛЬКО валидным
 JSON без markdown: {"Понятие": "краткое определение", ...}. Ключи — ДОСЛОВНО как в списке.""",
-        user=f"ПОНЯТИЯ:\n{listing}",
-        model=POWER_MODEL,
-        max_tokens=2500,
-    )
+            user=f"ПОНЯТИЯ:\n{listing}",
+            model=POWER_MODEL,
+            max_tokens=2500,
+        )
+    except PipelineError:
+        return {}
     try:
         data = parse_json_lenient(raw)
     except json.JSONDecodeError:
-        return
+        return {}
     if not isinstance(data, dict):
-        return
-    for name, expl in data.items():
-        if not isinstance(expl, str):
-            continue
-        k = str(name).strip().lower()
+        return {}
+    return {str(k).strip().lower(): v.strip()[:600]
+            for k, v in data.items() if isinstance(v, str)}
+
+
+def add_world_info(info: dict, graph: dict) -> None:
+    """Заполняет info[name]['world'] краткой общей справкой по понятиям графа.
+    Мутирует info на месте."""
+    names = [n["name"] for n in sorted(graph["nodes"].values(),
+                                       key=lambda x: x["mentions"], reverse=True)[:35]]
+    for k, v in _batch_world_info(names).items():
         if k in info:
-            info[k]["world"] = expl.strip()[:600]
+            info[k]["world"] = v
 
 
 # ─── СЕРИАЛИЗАЦИЯ ГРАФА ДЛЯ ФРОНТА ────────────────────────────────────────────
@@ -640,6 +636,7 @@ def run_pipeline(text: str, query: str) -> dict:
       answer      — {answer, summary, key_points}
       schema      — структурная схема (6-10 узлов)
       graph       — {nodes, edges} с флагом in_answer для explainable-подсветки
+      mindmap     — реальная структура документа (разделы + дословные цитаты)
       explanation — какие именно узлы/рёбра стали "путём" к ответу
       stats       — метаданные прогона (для отладки/питча)
     """
@@ -675,14 +672,19 @@ def run_pipeline(text: str, query: str) -> dict:
     except PipelineError:
         pass
 
-    # Mind-map: иерархическое дерево понятий (то, что рисуется на фронте).
-    # Мягкая деградация: если шаг упал (перегрузка/битый JSON) — mindmap=None,
-    # и фронт покажет обычный граф понятий.
+    # Mind-map: РЕАЛЬНАЯ структура документа (заголовки/разделы, дословные цитаты),
+    # а не абстрактные категории от модели — то, что рисуется на фронте.
+    # Мягкая деградация: если шаг упал — mindmap=None, фронт покажет обычный граф.
     mindmap = None
     try:
-        mm_raw = step7_mindmap(memory, graph, main_topic_fallback(graph))
-        if mm_raw:
-            mindmap = flatten_mindmap(mm_raw, graph, in_answer_names, info)
+        sections_raw = step_document_sections(text, main_topic_fallback(graph))
+        if sections_raw:
+            mindmap = flatten_sections(sections_raw, in_answer_names)
+            section_titles = [n["name"] for n in mindmap["nodes"] if n["type"] == "section"]
+            world_blurbs = _batch_world_info(section_titles)
+            for n in mindmap["nodes"]:
+                if n["type"] == "section":
+                    n["world"] = world_blurbs.get(n["name"].strip().lower(), "")
     except PipelineError:
         mindmap = None
 

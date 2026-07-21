@@ -512,7 +512,8 @@
   const TYPE_COLORS = {
     concept: getVar('--t-concept'), method: getVar('--t-method'),
     person:  getVar('--t-person'),  term:   getVar('--t-term'),
-    branch:  '#7C6FF0',   // узлы-ветки mind-map
+    branch:  '#7C6FF0',   // узлы-категории mind-map (заголовки разделов с детьми)
+    section: '#38BDF8',   // листья mind-map — карточки с цитатой из документа
   };
   function getVar(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 
@@ -593,22 +594,23 @@
 
   // ── МОДАЛКА УЗЛА (описание + фрагмент источника) ──
   const nodeOverlay = $('nodeOverlay');
-  const TYPE_LABEL = { concept:'Концепция', method:'Метод', person:'Персона', term:'Термин', branch:'Тематическая ветка' };
+  const TYPE_LABEL = { concept:'Концепция', method:'Метод', person:'Персона', term:'Термин', branch:'Тематическая ветка', section:'Раздел документа' };
   function openNodeModal(n){
     $('nodeTitle').textContent = n.name || '';
     $('nodeType').textContent = TYPE_LABEL[n.type] || n.type || '';
     const desc = (n.description || '').trim();
     $('nodeDesc').textContent = desc;
     $('nodeDesc').style.display = desc ? '' : 'none';
-    // 1) фрагмент из загруженного текста (если понятие там встречается)
-    const snip = (n.snippet || '').trim();
-    if (snip) {
-      $('nodeSnippet').textContent = snip;
+    // 1) цитата/фрагмент из загруженного текста: у нового mind-map это n.full
+    // (более полная цитата раздела), у старого fallback-графа — n.snippet
+    const frag = (n.full || n.snippet || '').trim();
+    if (frag) {
+      $('nodeSnippet').textContent = frag;
       $('nodeSnippetWrap').style.display = '';
     } else {
       $('nodeSnippetWrap').style.display = 'none';   // нет в тексте — секцию не показываем
     }
-    // 2) краткая справка о понятии (из общих знаний модели), после текста
+    // 2) краткая справка (из общих знаний модели), после текста — не у категорий
     const world = (n.world || '').trim();
     if (world && n.type !== 'branch') {
       $('nodeWorld').textContent = world;
@@ -737,17 +739,32 @@
     if (root) bfsFrom(root);
     graph.nodes.forEach(n => bfsFrom(n.id));   // отдельные «острова» — каждый со своего корня
 
+    // экранируем текст под HTML-мультишрифт vis (<b>жирный заголовок</b>\nтело) —
+    // ломаные скобки в цитате из документа не должны ловиться как теги
+    const escVis = s => String(s || '').replace(/</g, '‹').replace(/>/g, '›');
+
     const nodes = graph.nodes.map(n => {
-      const isBranch = n.type === 'branch';
-      const isRoot   = n.id === root;
+      const isBranch  = n.type === 'branch';
+      const isSection = n.type === 'section';   // лист mind-map — карточка с цитатой из текста
+      const isRoot    = n.id === root;
       const typeColor = TYPE_COLORS[n.type] || '#6C63FF';
-      const filled = n.in_answer || isBranch || isRoot;   // корень и ветки — заливкой
+      const filled = n.in_answer || isBranch || isRoot;   // корень и ветки-категории — заливкой
       const lightBg = (n.type === 'method' || n.type === 'term');  // тёмный текст на светлом фоне
+
+      // section: сразу виден текст (заголовок + отрывок), без клика.
+      // branch/root/старый граф понятий: просто короткое название, как раньше.
+      const label = isSection
+        ? `<b>${escVis(n.name)}</b>\n${escVis(n.excerpt || '')}`
+        : n.name;
+
       return {
         id: n.id,
-        label: n.name,
+        label,
         level: level.get(n.id) || 0,
         title: n.type + (n.mentions > 1 ? ` · упоминаний: ${n.mentions}` : ''),
+        // карточки-разделы — крупнее и шире (нужно место под отрывок текста)
+        widthConstraint: isSection ? { minimum: 220, maximum: 320 } : { minimum: 90, maximum: 180 },
+        margin: isSection ? 14 : 10,
         color: {
           background: filled ? typeColor : 'rgba(20,20,51,0.95)',
           border: n.in_answer ? '#A78BFA' : typeColor,
@@ -758,7 +775,9 @@
         font: {
           color: filled ? (lightBg ? '#0A0A1A' : '#FFFFFF') : '#CBD5E1',
           face: 'Inter',
-          size: isRoot ? 16 : ((n.in_answer || isBranch) ? 14 : 13),
+          size: isSection ? 12.5 : (isRoot ? 16 : (isBranch ? 14 : 13)),
+          multi: 'html',
+          align: isSection ? 'left' : 'center',
           vadjust: 0,
         },
       };
@@ -790,8 +809,8 @@
             enabled: true,
             direction: 'LR',          // корень слева, ветви растут вправо
             sortMethod: 'directed',   // порядок узлов внутри колонки (уровни заданы явно)
-            levelSeparation: 340,     // расстояние между колонками (растянуто по горизонтали)
-            nodeSpacing: 95,          // расстояние между узлами одной колонки
+            levelSeparation: 380,     // расстояние между колонками (карточки-разделы шире узлов)
+            nodeSpacing: 130,         // расстояние между узлами одной колонки (карточки выше текстом)
             treeSpacing: 150,
             blockShifting: true,
             edgeMinimization: true,
