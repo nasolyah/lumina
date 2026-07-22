@@ -6,7 +6,6 @@
 <title>Lumina — рабочее пространство</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -78,7 +77,38 @@
 
   /* ── STAGE (graph) ── */
   .stage { grid-area: stage; position: relative; overflow: hidden; }
-  #graph { position: absolute; inset: 0; }
+  #graph { position: absolute; inset: 0; overflow: auto; padding: 48px 60px; box-sizing: border-box; }
+
+  /* ── ДЕРЕВО ГРАФА: чистый CSS, вложенные flex-блоки (без граф-движка) ──────
+     Классическая техника "CSS org-chart": браузер сам считает раскладку по
+     вертикали (flex-column внутри .tchildren), горизонталь растёт вложенностью
+     (flex-row в .tnode-wrap) — строго слева направо, наложений в принципе быть
+     не может (в отличие от vis-network, где высоту карточек надо было угадывать). */
+  .tree-forest { display: flex; flex-direction: column; gap: 64px; width: max-content; }
+  .tnode-wrap { display: flex; flex-direction: row; align-items: center; gap: 46px; position: relative; }
+  .tnode {
+    flex: none; cursor: pointer; border-radius: 10px; padding: 10px 14px;
+    font-family: 'Inter', sans-serif; position: relative; z-index: 1;
+    transition: transform .15s, box-shadow .15s;
+  }
+  .tnode:hover { transform: translateY(-2px); }
+  .tnode .t-title { font-weight: 700; line-height: 1.3; }
+  .tnode .t-excerpt { font-size: 12px; line-height: 1.45; margin-top: 4px; }
+  /* горизонтальная линия от карточки-родителя к вертикальной "спице" детей */
+  .tnode.has-children::after {
+    content: ''; position: absolute; top: 50%; right: -46px; width: 46px; height: 2px;
+    background: rgba(148,163,184,.35);
+  }
+  .tnode.in-answer.has-children::after { background: #A78BFA; height: 2.5px; }
+  .tchildren {
+    display: flex; flex-direction: column; gap: 22px;
+    padding-left: 26px; border-left: 2px solid rgba(148,163,184,.35);
+  }
+  /* горизонтальный "ус" от спицы к каждому дочернему узлу */
+  .tchildren > .tnode-wrap::before {
+    content: ''; position: absolute; top: 50%; left: -26px; width: 26px; height: 2px;
+    background: rgba(148,163,184,.35);
+  }
 
   /* legend */
   .legend {
@@ -519,8 +549,6 @@
 
   // ── СОСТОЯНИЕ ──
   let currentText = '';      // текст загруженного источника
-  let network = null;        // экземпляр vis-network
-  let nodesDS = null, edgesDS = null;
   let nodeById = {};         // id → узел ТЕКУЩЕГО графа (для клика/модалки; обновляется на каждый рендер)
   // ── состояние сохранённого чата ──
   let currentChatId = null;  // id строки в Supabase (null = новый несохранённый)
@@ -747,12 +775,9 @@
     if (root) bfsFrom(root);
     graph.nodes.forEach(n => bfsFrom(n.id));   // отдельные «острова» — каждый со своего корня
 
-    // экранируем текст под HTML-мультишрифт vis (<b>жирный заголовок</b>\nтело) —
-    // ломаные скобки в цитате из документа не должны ловиться как теги
-    const escVis = s => String(s || '').replace(/</g, '‹').replace(/>/g, '›');
     // на карточке — короткий превью (модель не всегда укладывается в "2-3 предложения",
-    // бэк режет до 400 симв. — это ещё много строк и наложение блоков друг на друга).
-    // Полный excerpt/full — по клику, в модалке (см. openNodeModal).
+    // бэк режет до 400 симв. — это ещё много строк). Полный excerpt/full — по клику,
+    // в модалке (см. openNodeModal).
     const previewText = (s, max = 130) => {
       s = String(s || '').trim();
       if (s.length <= max) return s;
@@ -761,122 +786,87 @@
       return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut) + '…';
     };
 
-    const nodes = graph.nodes.map(n => {
+    // parent → [childId, ...] из рёбер остовного дерева (родитель — тот, у кого
+    // уровень меньше; направление исходного ребра тут не важно).
+    const children = new Map();
+    graph.edges.forEach((e, i) => {
+      if (!treeEdge.has(i)) return;
+      const lf = level.get(e.from), lt = level.get(e.to);
+      const [pid, cid] = lf <= lt ? [e.from, e.to] : [e.to, e.from];
+      if (!children.has(pid)) children.set(pid, []);
+      children.get(pid).push(cid);
+    });
+    // корни "леса" — все узлы нулевого уровня (обычно один; больше одного,
+    // если в графе есть несвязанные острова — тогда рисуем несколько деревьев).
+    const roots = graph.nodes.filter(n => level.get(n.id) === 0).map(n => n.id);
+
+    // Рекурсивно строим вложенный HTML: <div class="tnode-wrap">карточка + .tchildren</div>.
+    // Раскладку по вертикали/горизонтали целиком считает браузер (flex), поэтому
+    // высота карточек может быть любой без риска наложений — в отличие от vis-network.
+    function renderNode(id){
+      const n = nodeById[id];
       const isBranch  = n.type === 'branch';
-      const isSection = n.type === 'section';   // лист mind-map — карточка с цитатой из текста
-      const isRoot    = n.id === root;
-      const typeColor = TYPE_COLORS[n.type] || '#6C63FF';
-      const filled = n.in_answer || isBranch || isRoot;   // корень и ветки-категории — заливкой
-      const lightBg = (n.type === 'method' || n.type === 'term');  // тёмный текст на светлом фоне
+      const isSection = n.type === 'section';
+      const isRoot     = id === root;
+      const typeColor  = TYPE_COLORS[n.type] || '#6C63FF';
+      const filled     = n.in_answer || isBranch || isRoot;
+      const lightBg    = (n.type === 'method' || n.type === 'term');
+      const kids       = children.get(id) || [];
+      const hasKids    = kids.length > 0;
 
-      // section: сразу виден текст (заголовок + короткий превью), без клика.
-      // branch/root/старый граф понятий: просто короткое название, как раньше.
-      const label = isSection
-        ? `<b>${escVis(n.name)}</b>\n${escVis(previewText(n.excerpt))}`
-        : n.name;
+      const bg      = filled ? typeColor : 'rgba(20,20,51,0.95)';
+      const border  = n.in_answer ? '#A78BFA' : typeColor;
+      const fg      = filled ? (lightBg ? '#0A0A1A' : '#FFFFFF') : '#CBD5E1';
+      const fontPx  = isSection ? 12.5 : (isRoot ? 16 : (isBranch ? 14 : 13));
+      const glow    = n.in_answer ? 'box-shadow:0 0 18px rgba(167,139,250,.55);' : '';
+      const widthCss = isSection ? 'width:240px;' : '';
 
-      return {
-        id: n.id,
-        label,
-        level: level.get(n.id) || 0,
-        title: n.type + (n.mentions > 1 ? ` · упоминаний: ${n.mentions}` : ''),
-        // карточки-разделы — крупнее и шире (нужно место под превью текста),
-        // но фиксированная ширина (не диапазон) — тогда высота карточек однороднее
-        // и легче подобрать nodeSpacing без наложений.
-        widthConstraint: isSection ? { minimum: 240, maximum: 240 } : { minimum: 90, maximum: 180 },
-        margin: isSection ? 14 : 10,
-        color: {
-          background: filled ? typeColor : 'rgba(20,20,51,0.95)',
-          border: n.in_answer ? '#A78BFA' : typeColor,
-          highlight: { background: typeColor, border: '#A78BFA' }
-        },
-        borderWidth: n.in_answer ? 2.5 : 1.5,
-        shadow: n.in_answer ? { enabled: true, color: '#A78BFA', size: 18, x:0, y:0 } : false,
-        font: {
-          color: filled ? (lightBg ? '#0A0A1A' : '#FFFFFF') : '#CBD5E1',
-          face: 'Inter',
-          size: isSection ? 12.5 : (isRoot ? 16 : (isBranch ? 14 : 13)),
-          multi: 'html',
-          align: isSection ? 'left' : 'center',
-          vadjust: 0,
-        },
-      };
-    });
-    const edges = graph.edges.map((e, i) => {
-      const isTree = treeEdge.has(i);
-      const isAnswer = e.in_answer;
-      return {
-        id: 'e'+i, from: e.from, to: e.to,
-        // подпись — только на «скелетных» и ответных связях (иначе каша из текста)
-        label: (isAnswer || isTree) ? e.label : '',
-        color: {
-          color: isAnswer ? '#A78BFA' : (isTree ? 'rgba(148,163,184,0.5)' : 'rgba(148,163,184,0.13)'),
-          highlight: '#A78BFA'
-        },
-        width: isAnswer ? 2 : (isTree ? 1.3 : 0.6),
-        font: { color: '#64748B', size: 10, strokeWidth: 0, background: 'rgba(10,10,26,0.7)', align: 'top' },
-        arrows: { to: { enabled: false } },
-      };
-    });
+      const body = isSection
+        ? `<div class="t-title">${esc(n.name)}</div><div class="t-excerpt">${esc(previewText(n.excerpt))}</div>`
+        : `<span class="t-title" style="font-weight:${isRoot||isBranch?700:500};">${esc(n.name)}</span>`;
 
-    nodesDS = new vis.DataSet(nodes);
-    edgesDS = new vis.DataSet(edges);
-
-    if (!network) {
-      network = new vis.Network($('graph'), { nodes: nodesDS, edges: edgesDS }, {
-        layout: {
-          hierarchical: {
-            enabled: true,
-            direction: 'LR',          // корень слева, ветви растут вправо
-            sortMethod: 'directed',   // порядок узлов внутри колонки (уровни заданы явно)
-            levelSeparation: 340,     // расстояние между колонками
-            nodeSpacing: 190,         // расстояние между узлами одной колонки — с запасом:
-                                       // карточки-разделы (fixed 240px, превью до 130 симв.)
-                                       // многострочные, vis не меряет реальную высоту при раскладке
-            treeSpacing: 150,
-            blockShifting: true,
-            edgeMinimization: true,
-            parentCentralization: true,
-          }
-        },
-        physics: false,
-        nodes: {
-          shape: 'box',
-          margin: 10,
-          widthConstraint: { minimum: 90, maximum: 180 },
-          shapeProperties: { borderRadius: 8 },
-        },
-        edges: {
-          smooth: { enabled: true, type: 'cubicBezier', forceDirection: 'horizontal', roundness: 0.55 },
-        },
-        interaction: { hover: true, tooltipDelay: 120, dragNodes: true },
-      });
-      network.on('click', params => {
-        if (params.nodes.length) {
-          const n = nodeById[params.nodes[0]];
-          if (n) openNodeModal(n);
-        }
-      });
-    } else {
-      network.setData({ nodes: nodesDS, edges: edgesDS });
+      let html = `<div class="tnode-wrap">
+        <div class="tnode${hasKids ? ' has-children' : ''}${n.in_answer ? ' in-answer' : ''}"
+             data-id="${esc(id)}"
+             style="background:${bg};border:${n.in_answer ? '2.5px' : '1.5px'} solid ${border};color:${fg};font-size:${fontPx}px;${widthCss}${glow}"
+             title="${esc(n.type)}${n.mentions > 1 ? ' · упоминаний: ' + n.mentions : ''}">${body}</div>`;
+      if (hasKids) {
+        html += `<div class="tchildren">${kids.map(renderNode).join('')}</div>`;
+      }
+      html += `</div>`;
+      return html;
     }
-    network.fit({ animation: false });   // подогнать масштаб под всё дерево
+
+    $('graph').innerHTML = `<div class="tree-forest">${roots.map(renderNode).join('')}</div>`;
   }
 
-  // подсветить узел из чипа "путь к ответу".
-  // Пробуем по id (обычный граф), затем по имени (в mind-map id = имя понятия).
+  // клик по карточке дерева → модалка с деталями (делегирование — вешаем один раз,
+  // .innerHTML на #graph переписывается при каждом renderGraph, но сам контейнер — нет)
+  $('graph').addEventListener('click', e => {
+    const card = e.target.closest('.tnode');
+    if (!card) return;
+    const n = nodeById[card.dataset.id];
+    if (n) openNodeModal(n);
+  });
+
+  // подсветить узел из чипа "путь к ответу": прокрутить карточку в область видимости
+  // + короткая вспышка рамки. Пробуем по id, затем по имени (в mind-map id = имя понятия).
   window.focusPath = (i) => {
     const p = (window._lastPath || [])[i];
-    if (!p || !network || !nodesDS) return;
-    let target = nodesDS.get(p.id) ? p.id : null;
-    if (!target) {
+    if (!p) return;
+    let card = document.querySelector(`.tnode[data-id="${CSS.escape(p.id)}"]`);
+    if (!card) {
       const nrm = (p.name || '').trim().toLowerCase();
-      const m = nodesDS.get().find(nd => (nd.label || '').trim().toLowerCase() === nrm);
-      if (m) target = m.id;
+      card = [...document.querySelectorAll('.tnode')].find(
+        el => (nodeById[el.dataset.id]?.name || '').trim().toLowerCase() === nrm
+      );
     }
-    if (!target) return;
-    network.selectNodes([target]);
-    network.focus(target, { scale: 1.2, animation: true });
+    if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    card.style.transition = 'box-shadow .15s';
+    const prevShadow = card.style.boxShadow;
+    card.style.boxShadow = '0 0 0 3px #A78BFA, 0 0 24px rgba(167,139,250,.7)';
+    setTimeout(() => { card.style.boxShadow = prevShadow; }, 1200);
   };
 
   // ── СООБЩЕНИЯ ──
@@ -995,7 +985,7 @@
     resetSourceInputs();
     msgs.innerHTML = '';
     $('stageEmpty').classList.remove('hidden');
-    if (network) network.setData({ nodes: new vis.DataSet([]), edges: new vis.DataSet([]) });
+    $('graph').innerHTML = ''; $('legend').classList.add('hidden');
     $('stats').innerHTML = '';
     closeChatsDrawer();
     openModal();   // сразу предложить загрузить источник
@@ -1049,7 +1039,7 @@
         resetSourceInputs();
         msgs.innerHTML = '';
         $('stageEmpty').classList.remove('hidden');
-        if (network) network.setData({ nodes: new vis.DataSet([]), edges: new vis.DataSet([]) });
+        $('graph').innerHTML = ''; $('legend').classList.add('hidden');
         $('stats').innerHTML = '';
       }
       loadChatList();
