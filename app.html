@@ -429,10 +429,8 @@
         <button class="btn primary" id="emptyCTA" style="flex:none;width:100%;max-width:220px;margin-top:6px;">Загрузить источник</button>
       </div>
       <div class="legend hidden" id="legend">
-        <div class="item"><span class="sw" style="background:var(--t-concept)"></span>концепция</div>
-        <div class="item"><span class="sw" style="background:var(--t-method)"></span>метод</div>
-        <div class="item"><span class="sw" style="background:var(--t-person)"></span>персона</div>
-        <div class="item"><span class="sw" style="background:var(--t-term)"></span>термин</div>
+        <div class="item"><span class="sw" style="background:linear-gradient(90deg,#38BDF8,#FBBF24,#F472B6)"></span>цвет = ветка</div>
+        <div class="item"><span class="sw" style="background:#34D399"></span>ответ (саб-чат)</div>
         <div class="item"><span class="ring"></span>путь к ответу</div>
       </div>
     </main>
@@ -563,6 +561,13 @@
     answer:  '#34D399',   // узлы-ответы из саб-чата (ответвление от ветки)
   };
   function getVar(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+  // светлый ли цвет фона (для выбора цвета текста поверх него)
+  function isLightColor(hex){
+    const h = String(hex || '').replace('#', '');
+    if (h.length !== 6) return false;
+    const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+    return (0.299*r + 0.587*g + 0.114*b) > 150;   // воспринимаемая яркость
+  }
 
   // ── СОСТОЯНИЕ ──
   let currentText = '';      // текст загруженного источника
@@ -896,6 +901,20 @@
     // если в графе есть несвязанные острова — тогда рисуем несколько деревьев).
     const roots = graph.nodes.filter(n => level.get(n.id) === 0).map(n => n.id);
 
+    // ── ЦВЕТ ПО ВЕТКЕ: каждая главная ветка (ребёнок корня) получает свой цвет
+    // из палитры, все её потомки наследуют его. Так разделы визуально сгруппированы
+    // (раньше все листья были типа 'section' → один цвет на всё дерево).
+    const FAM_PALETTE = ['#38BDF8','#FBBF24','#F472B6','#A78BFA','#22D3EE','#FB923C','#4ADE80','#60A5FA'];
+    const famColor = new Map();
+    let famIdx = 0;
+    const paintFamily = (id, color) => {
+      famColor.set(id, color);
+      for (const c of (children.get(id) || [])) paintFamily(c, color);
+    };
+    for (const rid of roots) {
+      for (const c of (children.get(rid) || [])) paintFamily(c, FAM_PALETTE[famIdx++ % FAM_PALETTE.length]);
+    }
+
     // Рекурсивно строим вложенный HTML: <div class="tnode-wrap">карточка + .tchildren</div>.
     // Раскладку по вертикали/горизонтали целиком считает браузер (flex), поэтому
     // высота карточек может быть любой без риска наложений — в отличие от vis-network.
@@ -906,15 +925,19 @@
       const isAnswer  = n.type === 'answer';
       const isCard    = isSection || isAnswer;   // карточка с заголовком + текстом
       const isRoot     = id === root;
-      const typeColor  = TYPE_COLORS[n.type] || '#6C63FF';
+      // цвет: ответы саб-чата — всегда зелёные (это добавленное юзером), остальные —
+      // по своей главной ветке (famColor), с откатом на тип узла для старого графа понятий
+      const typeColor  = isAnswer ? TYPE_COLORS.answer
+                       : (famColor.get(id) || TYPE_COLORS[n.type] || '#6C63FF');
       const filled     = n.in_answer || isBranch || isRoot;
-      const lightBg    = (n.type === 'method' || n.type === 'term');
       const kids       = children.get(id) || [];
       const hasKids    = kids.length > 0;
 
       const bg      = filled ? typeColor : 'rgba(20,20,51,0.95)';
       const border  = n.in_answer ? '#A78BFA' : typeColor;
-      const fg      = filled ? (lightBg ? '#0A0A1A' : '#FFFFFF') : '#CBD5E1';
+      // текст на залитой карточке: по яркости фона (в палитре веток есть светлые —
+      // жёлтый/циан/зелёный, белым по ним не читается)
+      const fg      = filled ? (isLightColor(typeColor) ? '#0A0A1A' : '#FFFFFF') : '#CBD5E1';
       const fontPx  = isCard ? 12.5 : (isRoot ? 16 : (isBranch ? 14 : 13));
       const glow    = n.in_answer ? 'box-shadow:0 0 18px rgba(167,139,250,.55);' : '';
       const widthCss = isCard ? 'width:240px;' : '';
