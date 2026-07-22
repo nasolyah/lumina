@@ -531,7 +531,7 @@
       </div>
       <a class="btn primary" style="display:block;text-align:center;padding:12px 20px;box-sizing:border-box;text-decoration:none;"
          href="mailto:markingmark33@gmail.com?subject=Lumina%20Pro%20—%20хочу%20доступ">Запросить доступ к Pro</a>
-      <div style="font-size:11.5px;color:var(--muted);margin-top:12px;">Уже созданные графы остаются доступны в «Мои чаты».</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:12px;">Созданные графы остаются доступны в «Мои чаты». Удаление чата не возвращает слот.</div>
     </div>
   </div>
 
@@ -782,9 +782,10 @@
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeNodeModal(); closePaywall(); } });
 
   // ── ЛИМИТ БЕСПЛАТНОГО ТАРИФА ──
-  // 5 графов = 5 сохранённых чатов на пользователя. Здесь — проверка ради UX
+  // 5 графов ВСЕГО за время жизни аккаунта (не 5 одновременно): счётчик в БД
+  // только растёт, удаление чата слот не возвращает. Здесь — проверка ради UX
   // (не строим граф, если лимит исчерпан); настоящее ограничение — триггер в БД
-  // на INSERT в chats (его нельзя обойти в обход фронта), см. saveChat().
+  // на INSERT в chats, он же инкрементит счётчик, см. saveChat().
   const FREE_GRAPH_LIMIT = 5;
   const paywallOverlay = $('paywallOverlay');
   function openPaywall(used){
@@ -797,12 +798,14 @@
   $('paywallClose').onclick = closePaywall;
   paywallOverlay.addEventListener('click', e => { if (e.target === paywallOverlay) closePaywall(); });
 
-  // сколько графов (чатов) уже у пользователя; RLS отдаёт только его строки
-  async function countUserChats(){
+  // Сколько графов пользователь СГЕНЕРИРОВАЛ ВСЕГО (счётчик только растёт).
+  // Важно: считать текущие чаты нельзя — удалил чат, освободил слот и генерируй
+  // заново до бесконечности. Счётчик ведёт триггер в БД при вставке в chats.
+  async function countUserGraphs(){
     if (!sb) return 0;
-    const { count, error } = await sb.from('chats').select('id', { count: 'exact', head: true });
-    if (error) { console.error('countUserChats', error); return 0; }
-    return count || 0;
+    const { data, error } = await sb.from('usage_counters').select('graphs_used').maybeSingle();
+    if (error) { console.error('countUserGraphs', error); return 0; }
+    return (data && data.graphs_used) || 0;
   }
 
   // ── АНАЛИЗ (построение графа) ──
@@ -813,7 +816,7 @@
 
     // новый источник = новый чат → проверяем лимит ДО построения (чтобы не жечь
     // вызовы Gemini на граф, который всё равно нельзя будет сохранить)
-    const used = await countUserChats();
+    const used = await countUserGraphs();
     if (used >= FREE_GRAPH_LIMIT) { closeModal(); openPaywall(used); return; }
 
     currentText = text;
