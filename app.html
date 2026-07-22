@@ -517,6 +517,24 @@
     </div>
   </div>
 
+  <!-- ПЕЙВОЛЛ: лимит бесплатного тарифа исчерпан -->
+  <div class="overlay" id="paywallOverlay">
+    <div class="modal" style="position:relative; max-width:460px; text-align:center;">
+      <button id="paywallClose" aria-label="Закрыть" title="Закрыть"
+        style="position:absolute;top:12px;right:14px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:#94A3B8;font-size:20px;line-height:1;cursor:pointer;border-radius:8px;">✕</button>
+      <div style="font-size:34px;margin-bottom:10px;">✦</div>
+      <h2 style="margin:0 0 8px;">Бесплатные графы закончились</h2>
+      <div class="sub" id="paywallText" style="margin-bottom:18px;">Вы использовали все 5 графов бесплатного тарифа.</div>
+      <div style="background:rgba(20,20,51,0.6);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:18px;text-align:left;font-size:13.5px;color:#CBD5E1;line-height:1.6;">
+        Хотите продолжить без ограничений? Напишите нам — откроем доступ к Pro ($5/мес):
+        безлимитные графы, всё из Free, приоритет в очереди.
+      </div>
+      <a class="btn primary" style="display:block;text-align:center;padding:12px 20px;box-sizing:border-box;text-decoration:none;"
+         href="mailto:markingmark33@gmail.com?subject=Lumina%20Pro%20—%20хочу%20доступ">Запросить доступ к Pro</a>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:12px;">Уже созданные графы остаются доступны в «Мои чаты».</div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
 <script>
@@ -761,13 +779,43 @@
   $('nodeClose').onclick = closeNodeModal;
   nodeOverlay.addEventListener('click', e => { if (e.target === nodeOverlay) closeNodeModal(); });
 
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeNodeModal(); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeNodeModal(); closePaywall(); } });
+
+  // ── ЛИМИТ БЕСПЛАТНОГО ТАРИФА ──
+  // 5 графов = 5 сохранённых чатов на пользователя. Здесь — проверка ради UX
+  // (не строим граф, если лимит исчерпан); настоящее ограничение — триггер в БД
+  // на INSERT в chats (его нельзя обойти в обход фронта), см. saveChat().
+  const FREE_GRAPH_LIMIT = 5;
+  const paywallOverlay = $('paywallOverlay');
+  function openPaywall(used){
+    if (typeof used === 'number') {
+      $('paywallText').textContent = `Вы использовали ${used} из ${FREE_GRAPH_LIMIT} графов бесплатного тарифа.`;
+    }
+    paywallOverlay.classList.add('open');
+  }
+  function closePaywall(){ paywallOverlay.classList.remove('open'); }
+  $('paywallClose').onclick = closePaywall;
+  paywallOverlay.addEventListener('click', e => { if (e.target === paywallOverlay) closePaywall(); });
+
+  // сколько графов (чатов) уже у пользователя; RLS отдаёт только его строки
+  async function countUserChats(){
+    if (!sb) return 0;
+    const { count, error } = await sb.from('chats').select('id', { count: 'exact', head: true });
+    if (error) { console.error('countUserChats', error); return 0; }
+    return count || 0;
+  }
 
   // ── АНАЛИЗ (построение графа) ──
   $('analyzeBtn').onclick = async () => {
     const pasteActive = document.querySelector('.tab.active').dataset.tab === 'paste';
     const text = pasteActive ? $('srcText').value.trim() : currentText.trim();
     if (!text) { toast('Сначала вставьте текст или загрузите файл.'); return; }
+
+    // новый источник = новый чат → проверяем лимит ДО построения (чтобы не жечь
+    // вызовы Gemini на граф, который всё равно нельзя будет сохранить)
+    const used = await countUserChats();
+    if (used >= FREE_GRAPH_LIMIT) { closeModal(); openPaywall(used); return; }
+
     currentText = text;
 
     // новый источник → новый чат: сбрасываем состояние и переписку
@@ -1181,7 +1229,13 @@
         await sb.from('chats').update({ ...row, updated_at: new Date().toISOString() }).eq('id', currentChatId);
       } else {
         const { data, error } = await sb.from('chats').insert(row).select('id').single();
-        if (!error && data) currentChatId = data.id;
+        if (error) {
+          // триггер в БД отклонил вставку — лимит бесплатного тарифа исчерпан
+          // (страховка на случай, если фронт-проверку обошли)
+          if (/CHAT_LIMIT_REACHED/i.test(error.message || '')) { openPaywall(); return; }
+          throw error;
+        }
+        if (data) currentChatId = data.id;
       }
     } catch (e) { console.error('saveChat', e); }
   }
