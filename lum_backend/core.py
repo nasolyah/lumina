@@ -92,11 +92,14 @@ def call_llm(system: str, user: str, model: str = POWER_MODEL, retries: int = RE
     supports_thinking = ("2.5" in name) or ("latest" in name) or name.startswith("gemini-3") or ("gemini-3" in name)
     if supports_thinking:
         budget = THINKING_BUDGET
-        # ВАЖНО: pro не умеет budget=0 (минимум 128). Если для pro НЕ слать thinkingConfig,
-        # он «думает» динамически и съедает весь maxOutputTokens → пустой ответ. Поэтому
-        # кэпим мышление на минимум — иначе граф не строится. Flash с budget=0 — как было.
-        if "pro" in name and budget <= 0:
-            budget = 128
+        # ВАЖНО: буквальный 0 отклоняют и pro (нужен минимум 128), и — как выяснилось
+        # 22.07.2026 — flash-lite/flash под алиасом "-latest" (там, похоже, докатили
+        # версию модели, которая тоже больше не берёт 0 — раньше работало). Раз "-latest"
+        # может подменить модель без предупреждения, никогда не шлём буквальный 0: если
+        # THINKING_BUDGET<=0, берём минимальный положительный бюджет вместо полного
+        # отключения — дёшево (мышление всё равно почти не тратится), но не 400.
+        if budget <= 0:
+            budget = 128 if "pro" in name else 1
         gen_config["thinkingConfig"] = {"thinkingBudget": budget}
     body = {
         "system_instruction": {"parts": [{"text": system}]},
