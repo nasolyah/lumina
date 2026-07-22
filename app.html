@@ -77,15 +77,19 @@
 
   /* ── STAGE (graph) ── */
   .stage { grid-area: stage; position: relative; overflow: hidden; }
-  #graph { position: absolute; inset: 0; overflow: auto; padding: 48px 60px; box-sizing: border-box; }
+  /* overflow:hidden — панорамирование/зум своей рукой через transform на #graphCanvas,
+     не нативный скролл (нужно для колеса мыши = зум, а не прокрутка страницы) */
+  #graph { position: absolute; inset: 0; overflow: hidden; cursor: grab; user-select: none; }
+  #graph.panning { cursor: grabbing; }
+  #graphCanvas { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
 
   /* ── ДЕРЕВО ГРАФА: чистый CSS, вложенные flex-блоки (без граф-движка) ──────
      Классическая техника "CSS org-chart": браузер сам считает раскладку по
      вертикали (flex-column внутри .tchildren), горизонталь растёт вложенностью
      (flex-row в .tnode-wrap) — строго слева направо, наложений в принципе быть
      не может (в отличие от vis-network, где высоту карточек надо было угадывать). */
-  .tree-forest { display: flex; flex-direction: column; gap: 64px; width: max-content; }
-  .tnode-wrap { display: flex; flex-direction: row; align-items: center; gap: 46px; position: relative; }
+  .tree-forest { --h-gap: 90px; display: flex; flex-direction: column; gap: 64px; width: max-content; }
+  .tnode-wrap { display: flex; flex-direction: row; align-items: center; gap: var(--h-gap); position: relative; }
   .tnode {
     flex: none; cursor: pointer; border-radius: 10px; padding: 10px 14px;
     font-family: 'Inter', sans-serif; position: relative; z-index: 1;
@@ -96,7 +100,7 @@
   .tnode .t-excerpt { font-size: 12px; line-height: 1.45; margin-top: 4px; }
   /* горизонтальная линия от карточки-родителя к вертикальной "спице" детей */
   .tnode.has-children::after {
-    content: ''; position: absolute; top: 50%; right: -46px; width: 46px; height: 2px;
+    content: ''; position: absolute; top: 50%; right: calc(-1 * var(--h-gap)); width: var(--h-gap); height: 2px;
     background: rgba(148,163,184,.35);
   }
   .tnode.in-answer.has-children::after { background: #A78BFA; height: 2.5px; }
@@ -550,6 +554,9 @@
   // ── СОСТОЯНИЕ ──
   let currentText = '';      // текст загруженного источника
   let nodeById = {};         // id → узел ТЕКУЩЕГО графа (для клика/модалки; обновляется на каждый рендер)
+  // ── зум/пан холста графа (transform на #graphCanvas — колесо мыши, перетаскивание) ──
+  let gZoom = 1, gPanX = 60, gPanY = 40;
+  let gIsPanning = false, gDragMoved = false, gPanStartX = 0, gPanStartY = 0, gPanOrigX = 0, gPanOrigY = 0;
   // ── состояние сохранённого чата ──
   let currentChatId = null;  // id строки в Supabase (null = новый несохранённый)
   let chatMessages = [];     // переписка для сохранения: {role:'user',text} | {role:'bot',answer,explanation}
@@ -837,20 +844,64 @@
       return html;
     }
 
-    $('graph').innerHTML = `<div class="tree-forest">${roots.map(renderNode).join('')}</div>`;
+    $('graph').innerHTML = `<div id="graphCanvas"><div class="tree-forest">${roots.map(renderNode).join('')}</div></div>`;
+    // новый граф — сбрасываем зум/пан на дефолт и сразу применяем
+    gZoom = 1; gPanX = 60; gPanY = 40;
+    applyGraphTransform();
   }
 
-  // клик по карточке дерева → модалка с деталями (делегирование — вешаем один раз,
-  // .innerHTML на #graph переписывается при каждом renderGraph, но сам контейнер — нет)
-  $('graph').addEventListener('click', e => {
+  function applyGraphTransform(){
+    const canvas = document.getElementById('graphCanvas');
+    if (canvas) canvas.style.transform = `translate(${gPanX}px, ${gPanY}px) scale(${gZoom})`;
+  }
+
+  // ── ЗУМ/ПАН ХОЛСТА (колесо мыши = зум к курсору, перетаскивание = пан) ──
+  // Вешаем один раз на постоянный #graph (его innerHTML переписывается при каждом
+  // renderGraph, но сам элемент — нет), работает для любого текущего графа.
+  const graphEl = $('graph');
+  graphEl.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;   // только левая кнопка мыши
+    gIsPanning = true; gDragMoved = false;
+    gPanStartX = e.clientX; gPanStartY = e.clientY;
+    gPanOrigX = gPanX; gPanOrigY = gPanY;
+    graphEl.classList.add('panning');
+  });
+  window.addEventListener('mousemove', e => {
+    if (!gIsPanning) return;
+    const dx = e.clientX - gPanStartX, dy = e.clientY - gPanStartY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) gDragMoved = true;
+    gPanX = gPanOrigX + dx; gPanY = gPanOrigY + dy;
+    applyGraphTransform();
+  });
+  window.addEventListener('mouseup', () => {
+    if (gIsPanning) { gIsPanning = false; graphEl.classList.remove('panning'); }
+  });
+  graphEl.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = graphEl.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    const newZoom = Math.min(2.5, Math.max(0.25, gZoom * factor));
+    // зумим "к курсору": точка холста под курсором должна остаться под курсором
+    gPanX = mx - (mx - gPanX) * (newZoom / gZoom);
+    gPanY = my - (my - gPanY) * (newZoom / gZoom);
+    gZoom = newZoom;
+    applyGraphTransform();
+  }, { passive: false });
+
+  // клик по карточке дерева → модалка с деталями (делегирование; игнорируем клик,
+  // если это был конец перетаскивания холста, а не настоящий клик по карточке)
+  graphEl.addEventListener('click', e => {
+    if (gDragMoved) { gDragMoved = false; return; }
     const card = e.target.closest('.tnode');
     if (!card) return;
     const n = nodeById[card.dataset.id];
     if (n) openNodeModal(n);
   });
 
-  // подсветить узел из чипа "путь к ответу": прокрутить карточку в область видимости
-  // + короткая вспышка рамки. Пробуем по id, затем по имени (в mind-map id = имя понятия).
+  // подсветить узел из чипа "путь к ответу": подвинуть холст так, чтобы карточка
+  // оказалась по центру видимой области (с учётом текущего зума) + вспышка рамки.
+  // Пробуем по id, затем по имени (в mind-map id = имя понятия).
   window.focusPath = (i) => {
     const p = (window._lastPath || [])[i];
     if (!p) return;
@@ -862,7 +913,21 @@
       );
     }
     if (!card) return;
-    card.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    const canvas = document.getElementById('graphCanvas');
+    if (canvas) {
+      // локальные (нетрансформированные) координаты карточки относительно холста —
+      // transform не влияет на offsetLeft/offsetTop, поэтому проход по offsetParent даёт
+      // истинную позицию в потоке документа
+      let x = 0, y = 0, node = card;
+      while (node && node !== canvas) { x += node.offsetLeft; y += node.offsetTop; node = node.offsetParent; }
+      const cx = x + card.offsetWidth / 2, cy = y + card.offsetHeight / 2;
+      const rect = graphEl.getBoundingClientRect();
+      canvas.style.transition = 'transform .35s ease';
+      gPanX = rect.width / 2 - cx * gZoom;
+      gPanY = rect.height / 2 - cy * gZoom;
+      applyGraphTransform();
+      setTimeout(() => { canvas.style.transition = ''; }, 350);
+    }
     card.style.transition = 'box-shadow .15s';
     const prevShadow = card.style.boxShadow;
     card.style.boxShadow = '0 0 0 3px #A78BFA, 0 0 24px rgba(167,139,250,.7)';
