@@ -584,10 +584,18 @@
   }
 
   // ── ОТКРЫТЬ/ЗАКРЫТЬ МОДАЛКУ ──
+  // Сбрасывает UI модалки источника (имя файла, текст в textarea) вместе с currentText —
+  // иначе после сброса currentText (новый чат/удаление) модалка врёт, показывая старый
+  // файл/текст, хотя реального содержимого уже нет ("нужно сначала загрузить файл").
+  function resetSourceInputs(){
+    currentText = '';
+    $('fname').textContent = 'поддерживается .txt, .md, .pdf';
+    $('srcText').value = '';
+  }
   function openModal(){ overlay.classList.add('open'); }
   function closeModal(){ overlay.classList.remove('open'); }
-  $('newSourceBtn').onclick = openModal;
-  $('emptyCTA').onclick = openModal;
+  $('newSourceBtn').onclick = () => { resetSourceInputs(); openModal(); };
+  $('emptyCTA').onclick = () => { resetSourceInputs(); openModal(); };
   $('modalClose').onclick = closeModal;
   // закрытие по клику на затемнённый фон и по Escape
   overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
@@ -983,7 +991,8 @@
   $('chatsClose').onclick = closeChatsDrawer;
   chatsBackdrop.onclick = closeChatsDrawer;
   $('newChatBtn').onclick = () => {
-    currentChatId = null; chatMessages = []; lastGraph = null; currentText = '';
+    currentChatId = null; chatMessages = []; lastGraph = null;
+    resetSourceInputs();
     msgs.innerHTML = '';
     $('stageEmpty').classList.remove('hidden');
     if (network) network.setData({ nodes: new vis.DataSet([]), edges: new vis.DataSet([]) });
@@ -1036,7 +1045,8 @@
       if (error) throw error;
       // если удалили открытый сейчас чат — сбрасываем на пустое состояние
       if (currentChatId === id) {
-        currentChatId = null; chatMessages = []; lastGraph = null; currentText = '';
+        currentChatId = null; chatMessages = []; lastGraph = null;
+        resetSourceInputs();
         msgs.innerHTML = '';
         $('stageEmpty').classList.remove('hidden');
         if (network) network.setData({ nodes: new vis.DataSet([]), edges: new vis.DataSet([]) });
