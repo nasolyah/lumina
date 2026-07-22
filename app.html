@@ -504,6 +504,18 @@
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#22D3EE;margin-bottom:6px;">Кратко о понятии</div>
         <div id="nodeWorld" style="background:rgba(20,40,51,0.5);border-left:3px solid #22D3EE;border-radius:6px;padding:12px 14px;color:#E2E8F0;font-size:13.5px;line-height:1.55;"></div>
       </div>
+
+      <!-- САБ-ЧАТ: вопрос строго по этой ветке; ответ станет новым узлом-ответвлением -->
+      <div id="nodeChatWrap" style="margin-top:18px;border-top:1px solid var(--border);padding-top:16px;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#34D399;margin-bottom:8px;">Спросить по этой ветке</div>
+        <div id="nodeChatMsgs" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
+        <div style="display:flex;gap:8px;">
+          <input id="nodeChatInput" type="text" placeholder="Вопрос по этому разделу…"
+            style="flex:1;background:rgba(20,20,51,0.6);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:13.5px;outline:none;">
+          <button id="nodeChatSend" class="btn primary" style="flex:none;padding:10px 18px;">Спросить</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px;">Ответ добавится в граф отдельной веткой от этого узла.</div>
+      </div>
     </div>
   </div>
 
@@ -548,6 +560,7 @@
     person:  getVar('--t-person'),  term:   getVar('--t-term'),
     branch:  '#7C6FF0',   // узлы-категории mind-map (заголовки разделов с детьми)
     section: '#38BDF8',   // листья mind-map — карточки с цитатой из документа
+    answer:  '#34D399',   // узлы-ответы из саб-чата (ответвление от ветки)
   };
   function getVar(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 
@@ -635,13 +648,17 @@
   // закрытие по клику на затемнённый фон и по Escape
   overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
 
-  // ── МОДАЛКА УЗЛА (описание + фрагмент источника) ──
+  // ── МОДАЛКА УЗЛА (описание + фрагмент источника + саб-чат) ──
   const nodeOverlay = $('nodeOverlay');
-  const TYPE_LABEL = { concept:'Концепция', method:'Метод', person:'Персона', term:'Термин', branch:'Тематическая ветка', section:'Раздел документа' };
+  const TYPE_LABEL = { concept:'Концепция', method:'Метод', person:'Персона', term:'Термин', branch:'Тематическая ветка', section:'Раздел документа', answer:'Ответ (саб-чат)' };
+  let nodeModalId = null;   // id узла, открытого сейчас в модалке (к нему крепится саб-чат)
+
   function openNodeModal(n){
+    nodeModalId = n.id;
     $('nodeTitle').textContent = n.name || '';
     $('nodeType').textContent = TYPE_LABEL[n.type] || n.type || '';
-    const desc = (n.description || '').trim();
+    // у узла-ответа показываем вопрос как описание
+    const desc = (n.question ? 'Вопрос: ' + n.question : (n.description || '')).trim();
     $('nodeDesc').textContent = desc;
     $('nodeDesc').style.display = desc ? '' : 'none';
     // 1) цитата/фрагмент из загруженного текста: у нового mind-map это n.full
@@ -649,21 +666,93 @@
     const frag = (n.full || n.snippet || '').trim();
     if (frag) {
       $('nodeSnippet').textContent = frag;
+      $('nodeSnippet').previousElementSibling.textContent = n.type === 'answer' ? 'Ответ' : 'Фрагмент источника';
       $('nodeSnippetWrap').style.display = '';
     } else {
       $('nodeSnippetWrap').style.display = 'none';   // нет в тексте — секцию не показываем
     }
-    // 2) краткая справка (из общих знаний модели), после текста — не у категорий
+    // 2) краткая справка (из общих знаний модели), после текста — не у категорий/ответов
     const world = (n.world || '').trim();
-    if (world && n.type !== 'branch') {
+    if (world && n.type !== 'branch' && n.type !== 'answer') {
       $('nodeWorld').textContent = world;
       $('nodeWorldWrap').style.display = '';
     } else {
       $('nodeWorldWrap').style.display = 'none';
     }
+    // 3) саб-чат: показываем прошлые Q&A этой ветки (узлы-ответы, что уже висят на ней)
+    renderNodeChat(n.id);
+    $('nodeChatInput').value = '';
     nodeOverlay.classList.add('open');
   }
-  function closeNodeModal(){ nodeOverlay.classList.remove('open'); }
+
+  // показать в модалке ранее заданные вопросы по этой ветке (узлы-ответы — её дети)
+  function renderNodeChat(nodeId){
+    const box = $('nodeChatMsgs');
+    box.innerHTML = '';
+    if (!lastGraph) return;
+    const childIds = lastGraph.edges.filter(e => e.from === nodeId).map(e => e.to);
+    const answers = childIds
+      .map(id => lastGraph.nodes.find(x => x.id === id))
+      .filter(n => n && n.type === 'answer');
+    for (const a of answers) {
+      if (a.question) box.insertAdjacentHTML('beforeend',
+        `<div style="align-self:flex-end;background:var(--accent);color:#fff;border-radius:10px 10px 2px 10px;padding:7px 11px;font-size:13px;max-width:85%;">${esc(a.question)}</div>`);
+      box.insertAdjacentHTML('beforeend',
+        `<div style="align-self:flex-start;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.3);color:#E2E8F0;border-radius:10px 10px 10px 2px;padding:8px 12px;font-size:13px;max-width:90%;"><b style="color:#34D399;">${esc(a.name)}</b><br>${esc(a.full || a.excerpt || '')}</div>`);
+    }
+  }
+
+  // отправить вопрос по текущей ветке → новый узел-ответвление
+  async function sendNodeQuestion(){
+    const q = $('nodeChatInput').value.trim();
+    if (!q || !nodeModalId || !lastGraph) return;
+    const parent = lastGraph.nodes.find(x => x.id === nodeModalId);
+    if (!parent) return;
+    const btn = $('nodeChatSend'), input = $('nodeChatInput');
+    btn.disabled = true; input.disabled = true; btn.textContent = '…';
+    // показать вопрос сразу
+    $('nodeChatMsgs').insertAdjacentHTML('beforeend',
+      `<div style="align-self:flex-end;background:var(--accent);color:#fff;border-radius:10px 10px 2px 10px;padding:7px 11px;font-size:13px;max-width:85%;">${esc(q)}</div>`);
+    try {
+      const res = await fetch(API_BASE + '/api/ask-node', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
+        body: JSON.stringify({
+          node_title: parent.name || '',
+          node_text: (parent.full || parent.excerpt || parent.snippet || parent.name || ''),
+          question: q,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) showGate('Сессия истекла — войдите снова.');
+        $('nodeChatMsgs').insertAdjacentHTML('beforeend',
+          `<div style="align-self:flex-start;color:var(--warn);font-size:12.5px;">Не получилось: ${esc(data.detail || 'ошибка')}</div>`);
+        return;
+      }
+      // создаём новый узел-ответ и ребро ТОЛЬКО от этой ветки
+      const newId = 'ans_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      lastGraph.nodes.push({
+        id: newId, name: data.title || 'Ответ', type: 'answer',
+        question: q, excerpt: data.excerpt || '', full: data.full || data.excerpt || '',
+        world: '', mentions: 1, in_answer: false,
+      });
+      lastGraph.edges.push({ from: nodeModalId, to: newId, label: '', in_answer: false });
+      input.value = '';
+      renderGraph(lastGraph, true);  // перерисовать дерево с новой веткой (сохраняя вид)
+      renderNodeChat(nodeModalId);   // обновить историю в модалке
+      saveChat();                    // сохранить в Supabase
+    } catch (err) {
+      $('nodeChatMsgs').insertAdjacentHTML('beforeend',
+        `<div style="align-self:flex-start;color:var(--warn);font-size:12.5px;">Нет связи с сервером.</div>`);
+    } finally {
+      btn.disabled = false; input.disabled = false; btn.textContent = 'Спросить';
+    }
+  }
+  $('nodeChatSend').onclick = sendNodeQuestion;
+  $('nodeChatInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); sendNodeQuestion(); } });
+
+  function closeNodeModal(){ nodeOverlay.classList.remove('open'); nodeModalId = null; }
   $('nodeClose').onclick = closeNodeModal;
   nodeOverlay.addEventListener('click', e => { if (e.target === nodeOverlay) closeNodeModal(); });
 
@@ -736,7 +825,7 @@
   function setAsk(on){ $('askBtn').disabled = !on; $('q').disabled = !on; if(on) $('q').focus(); }
 
   // ── ГРАФ ──
-  function renderGraph(graph){
+  function renderGraph(graph, preserveView){
     $('legend').classList.remove('hidden');
     // индекс узлов текущего графа — чтобы клик по узлу работал и на 2-м, 3-м графе
     nodeById = {};
@@ -814,6 +903,8 @@
       const n = nodeById[id];
       const isBranch  = n.type === 'branch';
       const isSection = n.type === 'section';
+      const isAnswer  = n.type === 'answer';
+      const isCard    = isSection || isAnswer;   // карточка с заголовком + текстом
       const isRoot     = id === root;
       const typeColor  = TYPE_COLORS[n.type] || '#6C63FF';
       const filled     = n.in_answer || isBranch || isRoot;
@@ -824,11 +915,11 @@
       const bg      = filled ? typeColor : 'rgba(20,20,51,0.95)';
       const border  = n.in_answer ? '#A78BFA' : typeColor;
       const fg      = filled ? (lightBg ? '#0A0A1A' : '#FFFFFF') : '#CBD5E1';
-      const fontPx  = isSection ? 12.5 : (isRoot ? 16 : (isBranch ? 14 : 13));
+      const fontPx  = isCard ? 12.5 : (isRoot ? 16 : (isBranch ? 14 : 13));
       const glow    = n.in_answer ? 'box-shadow:0 0 18px rgba(167,139,250,.55);' : '';
-      const widthCss = isSection ? 'width:240px;' : '';
+      const widthCss = isCard ? 'width:240px;' : '';
 
-      const body = isSection
+      const body = isCard
         ? `<div class="t-title">${esc(n.name)}</div><div class="t-excerpt">${esc(previewText(n.excerpt))}</div>`
         : `<span class="t-title" style="font-weight:${isRoot||isBranch?700:500};">${esc(n.name)}</span>`;
 
@@ -845,8 +936,8 @@
     }
 
     $('graph').innerHTML = `<div id="graphCanvas"><div class="tree-forest">${roots.map(renderNode).join('')}</div></div>`;
-    // новый граф — сбрасываем зум/пан на дефолт и сразу применяем
-    gZoom = 1; gPanX = 60; gPanY = 40;
+    // новый граф — сбрасываем зум/пан на дефолт; при досборке (саб-чат) сохраняем вид
+    if (!preserveView) { gZoom = 1; gPanX = 60; gPanY = 40; }
     applyGraphTransform();
   }
 

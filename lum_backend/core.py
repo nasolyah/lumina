@@ -545,6 +545,44 @@ def main_topic_fallback(graph: dict) -> str:
     return max(graph["nodes"].values(), key=lambda n: n["mentions"])["name"]
 
 
+# ─── САБ-ЧАТ ПО ВЕТКЕ (вопрос строго по контексту одного узла) ────────────────
+
+_NODE_ANSWER_SYSTEM = """Ты отвечаешь на вопрос пользователя СТРОГО по данному фрагменту документа
+(раздел «{node_title}»). Опирайся ТОЛЬКО на этот фрагмент; если ответа в нём нет —
+честно скажи, что в этом разделе информации нет.
+Ответ должен стать новым узлом ментальной карты, ответвлением от этого раздела.
+Ответь ТОЛЬКО валидным JSON без markdown:
+{{"title":"короткий заголовок ответа (2-5 слов)",
+  "excerpt":"краткий ответ, 1-2 предложения",
+  "full":"более полный ответ, 3-6 предложений"}}"""
+
+
+def answer_for_node(node_title: str, node_text: str, question: str) -> dict | None:
+    """Отвечает на вопрос по контексту ОДНОГО узла (раздела). Возвращает
+    {title, excerpt, full} для нового узла-ответвления, либо None при сбое.
+    Один вызов модели — не полный пайплайн (быстро и дёшево)."""
+    if not (node_text or "").strip():
+        node_text = node_title
+    raw = call_llm(
+        system=_NODE_ANSWER_SYSTEM.format(node_title=node_title),
+        user=f"ФРАГМЕНТ РАЗДЕЛА «{node_title}»:\n{node_text}\n\nВОПРОС: {question}",
+        model=POWER_MODEL,
+        max_tokens=1200,
+    )
+    try:
+        data = parse_json_lenient(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    title = (data.get("title") or question or "Ответ").strip()[:80]
+    excerpt = (data.get("excerpt") or "").strip()[:400]
+    full = (data.get("full") or excerpt).strip()[:1500]
+    if not excerpt and not full:
+        return None
+    return {"title": title, "excerpt": excerpt, "full": full}
+
+
 # ─── ФРАГМЕНТЫ ИСХОДНИКА ДЛЯ УЗЛОВ ────────────────────────────────────────────
 
 def build_concept_info(text: str, graph: dict) -> dict:

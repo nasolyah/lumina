@@ -94,6 +94,12 @@ class AnalyzeRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Вопрос пользователя")
 
 
+class AskNodeRequest(BaseModel):
+    node_title: str = Field(..., min_length=1, description="Заголовок ветки/узла")
+    node_text: str = Field("", description="Текст (excerpt/full) этой ветки — контекст ответа")
+    question: str = Field(..., min_length=1, description="Вопрос пользователя по этой ветке")
+
+
 # Лимит на длину анализируемого текста (в символах). Защита от разорительных
 # прогонов: огромный текст = десятки чанков = десятки вызовов Gemini (время + деньги).
 MAX_TEXT_CHARS = int(os.environ.get("MAX_TEXT_CHARS", "100000"))  # ~16 тыс. слов
@@ -153,6 +159,30 @@ def analyze(req: AnalyzeRequest, user: dict = Depends(require_user)):
         # Непредвиденное → 500, но без утечки внутренних деталей наружу
         logger.exception("analyze: непредвиденная ошибка")
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка: {type(e).__name__}")
+
+
+@app.post("/api/ask-node")
+def ask_node(req: AskNodeRequest, user: dict = Depends(require_user)):
+    """
+    Саб-чат по конкретной ветке: отвечает на вопрос СТРОГО по контексту одного узла
+    и возвращает {title, excerpt, full} для нового узла-ответвления. Один вызов
+    модели — не полный пайплайн (быстро/дёшево). Требует валидный Supabase-JWT.
+    """
+    try:
+        node = core.answer_for_node(
+            node_title=req.node_title, node_text=req.node_text, question=req.question
+        )
+        if not node:
+            raise HTTPException(status_code=400, detail="Не удалось сформировать ответ по этой ветке.")
+        return node
+    except core.PipelineError as e:
+        logger.error("ask_node: PipelineError: %s", e)
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("ask_node: непредвиденная ошибка")
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка")
 
 
 @app.post("/api/extract")
