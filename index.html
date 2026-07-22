@@ -700,12 +700,12 @@
     </h1>
 
     <p class="hero-sub">
-      Загружайте PDF, статьи, заметки — Lumina анализирует, связывает идеи и отвечает на вопросы так, как это сделал бы умный коллега, прочитавший всё за вас.
+      Загрузите текст или PDF — Lumina разберёт документ на карту знаний и ответит на вопросы, показывая, откуда взялся каждый вывод.
     </p>
 
     <div class="hero-cta">
       <button class="btn-primary btn-start" onclick="openSidebar()">Начать бесплатно →</button>
-      <button class="btn-ghost">Смотреть демо</button>
+      <a class="btn-ghost" href="#how" style="text-decoration:none;display:inline-block;">Как это работает</a>
     </div>
   </section>
 
@@ -713,7 +713,7 @@
   <div class="strip">
     <div class="strip-item">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-      PDF, DOCX, TXT, веб-страницы
+      PDF, TXT, Markdown
     </div>
     <div class="strip-item">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
@@ -729,7 +729,7 @@
     </div>
     <div class="strip-item">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-      Ответы за секунды
+      Виден путь к ответу
     </div>
   </div>
 
@@ -743,15 +743,15 @@
         <div class="feat-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/></svg>
         </div>
-        <h3>Мультиисточниковый анализ</h3>
-        <p>Загружайте десятки документов одновременно. Lumina читает всё и помнит каждую деталь — вы задаёте вопросы поверх всей базы знаний.</p>
+        <h3>Текст и PDF</h3>
+        <p>Вставьте текст или загрузите файл — .txt, .md или PDF до 15 МБ. Lumina разберёт документ и построит по нему карту знаний.</p>
       </div>
       <div class="feat-card">
         <div class="feat-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="10" x2="9" y2="10"/><line x1="12" y1="10" x2="12" y2="10"/><line x1="15" y1="10" x2="15" y2="10"/></svg>
         </div>
-        <h3>Диалог с документами</h3>
-        <p>Задавайте вопросы на естественном языке. AI находит нужные фрагменты, сравнивает позиции авторов и формулирует ответ со ссылками.</p>
+        <h3>Диалог с источником</h3>
+        <p>Задавайте вопросы на естественном языке. В ответе — суть, ключевые факты и путь к ответу: видно, через какие узлы карты он получен.</p>
       </div>
       <div class="feat-card">
         <div class="feat-icon">
@@ -769,17 +769,17 @@
       </div>
       <div class="feat-card">
         <div class="feat-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2-2-2H4c-1.25 0-2 .75-2 2v9c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2-2-2h-4c-1.25 0-2 .75-2 2v9c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v1z"/></svg>
         </div>
-        <h3>Умные заметки</h3>
-        <p>Создавайте заметки прямо внутри ноутбука. AI дополняет, структурирует и находит связи с уже загруженными источниками.</p>
+        <h3>Цитата из источника</h3>
+        <p>Клик по любому узлу — и виден точный фрагмент исходного текста, откуда он взят. Плюс краткая справка о самом понятии.</p>
       </div>
       <div class="feat-card">
         <div class="feat-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><polyline points="12 7 12 12 15 14"/></svg>
         </div>
-        <h3>Веб и YouTube</h3>
-        <p>Добавляйте ссылки на статьи, научные публикации или YouTube-видео — Lumina извлечёт и проанализирует контент автоматически.</p>
+        <h3>История разборов</h3>
+        <p>Каждый разбор сохраняется вместе с картой и перепиской. Вернитесь через неделю — всё на месте, можно продолжить с того же места.</p>
       </div>
     </div>
   </section>
@@ -793,18 +793,18 @@
       <div class="steps">
         <div class="step">
           <div class="step-num">01</div>
-          <h3>Создайте ноутбук</h3>
-          <p>Дайте ему название и загрузите источники: PDF-файлы, ссылки, текстовые документы или заметки — в любом сочетании.</p>
+          <h3>Загрузите источник</h3>
+          <p>Вставьте текст или загрузите файл — .txt, .md или PDF. Один документ за раз, до 100 000 символов.</p>
         </div>
         <div class="step">
           <div class="step-num">02</div>
-          <h3>Lumina изучает материал</h3>
-          <p>AI полностью читает и индексирует каждый источник, выстраивает семантические связи и готовит базу для диалога.</p>
+          <h3>Lumina строит карту</h3>
+          <p>AI разбирает документ на его настоящие смысловые разделы и выстраивает из них карту знаний — слева направо, от общего к частному.</p>
         </div>
         <div class="step">
           <div class="step-num">03</div>
-          <h3>Спрашивайте и исследуйте</h3>
-          <p>Задавайте вопросы, просите резюме, сравнения или генерацию новых идей — опираясь только на ваши документы.</p>
+          <h3>Спрашивайте и углубляйтесь</h3>
+          <p>Задавайте общие вопросы в чате или кликайте ветку и спрашивайте про неё — ответ станет новой веткой карты.</p>
         </div>
       </div>
     </section>
