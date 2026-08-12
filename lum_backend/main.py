@@ -9,6 +9,7 @@ Lum / Lumina — FastAPI-обёртка над GraphRAG пайплайном.
     GET  /api/health      — детальная проверка (задан ли ключ, какие модели)
     POST /api/analyze     — полный прогон пайплайна по тексту + запросу
     POST /api/extract     — извлечь текст из загруженного PDF (парсинг на бэке)
+    POST /api/feedback    — сохранить отзыв пользователя (оценка + текст)
 """
 
 import io
@@ -100,6 +101,11 @@ class AskNodeRequest(BaseModel):
     question: str = Field(..., min_length=1, description="Вопрос пользователя по этой ветке")
 
 
+class FeedbackRequest(BaseModel):
+    rating: int = 0
+    text: str = ""
+
+
 # Лимит на длину анализируемого текста (в символах). Защита от разорительных
 # прогонов: огромный текст = десятки чанков = десятки вызовов Gemini (время + деньги).
 MAX_TEXT_CHARS = int(os.environ.get("MAX_TEXT_CHARS", "100000"))  # ~16 тыс. слов
@@ -159,6 +165,29 @@ def analyze(req: AnalyzeRequest, user: dict = Depends(require_user)):
         # Непредвиденное → 500, но без утечки внутренних деталей наружу
         logger.exception("analyze: непредвиденная ошибка")
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка: {type(e).__name__}")
+
+
+@app.post("/api/feedback")
+def submit_feedback(req: FeedbackRequest, user: dict = Depends(require_user)):
+    """Сохраняет фидбэк от пользователя (оценка 1-5 + текст) в feedback.jsonl."""
+    import datetime, json
+
+    entry = {
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "user_id": user.get("sub"),
+        "rating": req.rating,
+        "text": req.text,
+    }
+
+    feedback_path = os.environ.get("FEEDBACK_FILE", "feedback.jsonl")
+    try:
+        with open(feedback_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError as e:
+        logger.error("feedback: не удалось записать в файл: %s", e)
+        raise HTTPException(status_code=500, detail="Не удалось сохранить отзыв.")
+
+    return {"status": "ok"}
 
 
 @app.post("/api/ask-node")
