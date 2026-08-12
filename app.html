@@ -371,6 +371,49 @@
   .chat-item:hover .del { opacity: 1; }
   .chat-item .del:hover { background: rgba(239,68,68,.15); color: #EF4444; }
   .chats-empty { color: var(--muted); font-size: 13px; padding: 16px; text-align: center; }
+
+  /* ── FEEDBACK ── */
+  .fb-btn {
+    background: none; border: 1px solid var(--border); border-radius: 10px;
+    color: var(--muted); font-family: inherit; font-size: 13px; font-weight: 500;
+    padding: 7px 14px; cursor: pointer; transition: .2s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .fb-btn:hover { border-color: var(--border-lit); color: var(--text); }
+  .fb-overlay {
+    position: fixed; inset: 0; z-index: 300;
+    background: rgba(5,5,15,0.7); backdrop-filter: blur(6px);
+    display: none; align-items: center; justify-content: center; padding: 24px;
+  }
+  .fb-overlay.open { display: flex; }
+  .fb-modal {
+    width: 100%; max-width: 480px; background: var(--surface);
+    border: 1px solid var(--border-lit); border-radius: 20px; padding: 28px;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+  }
+  .fb-modal h2 {
+    font-family: 'Sora', sans-serif; font-weight: 700; font-size: 20px;
+    color: var(--white); margin-bottom: 6px;
+  }
+  .fb-modal .sub { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+  .fb-modal textarea {
+    width: 100%; min-height: 140px; resize: vertical;
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    color: var(--text); padding: 14px; font-family: inherit; font-size: 14px;
+    line-height: 1.6; outline: none;
+  }
+  .fb-modal textarea:focus { border-color: var(--border-lit); }
+  .fb-modal .actions { display: flex; gap: 10px; margin-top: 16px; }
+  .fb-stars { display: flex; gap: 4px; margin-bottom: 14px; }
+  .fb-star {
+    font-size: 26px; cursor: pointer; color: var(--muted);
+    transition: color .15s; background: none; border: none; padding: 2px;
+  }
+  .fb-star.active, .fb-star:hover { color: var(--warn); }
+  .fb-success {
+    text-align: center; padding: 20px 0; color: var(--ok);
+    font-size: 15px; font-weight: 500;
+  }
 </style>
 </head>
 <body>
@@ -401,6 +444,7 @@
       <div class="stats" id="stats"></div>
       <button class="btn ghost" id="myChatsBtn" style="padding:8px 14px;font-size:13px;">☰ Мои чаты</button>
       <button class="btn ghost" id="newSourceBtn" style="padding:8px 14px;font-size:13px;">Новый источник</button>
+      <button class="fb-btn" id="feedbackBtn">💬 Фидбэк</button>
       <div class="user-chip" id="userChip">
         <span class="ava" id="userAva"></span>
         <span id="userName"></span>
@@ -535,6 +579,25 @@
     </div>
   </div>
 
+  <div class="fb-overlay" id="fbOverlay">
+    <div class="fb-modal">
+      <h2>Оставить отзыв</h2>
+      <p class="sub">Расскажите, что понравилось или что можно улучшить.</p>
+      <div class="fb-stars" id="fbStars">
+        <button class="fb-star" data-v="1">★</button>
+        <button class="fb-star" data-v="2">★</button>
+        <button class="fb-star" data-v="3">★</button>
+        <button class="fb-star" data-v="4">★</button>
+        <button class="fb-star" data-v="5">★</button>
+      </div>
+      <textarea id="fbText" placeholder="Ваш отзыв…"></textarea>
+      <div class="actions">
+        <button class="btn ghost" onclick="closeFb()">Отмена</button>
+        <button class="btn primary" id="fbSend" style="flex:1">Отправить</button>
+      </div>
+      <div id="fbStatus"></div>
+    </div>
+  </div>
   <div class="toast" id="toast"></div>
 
 <script>
@@ -1315,6 +1378,64 @@
       if (event === 'SIGNED_OUT') { location.reload(); }
     });
   }
+  // ── FEEDBACK ───────────────────────────────────────────────────
+  let fbRating = 0;
+
+  $('feedbackBtn').onclick = () => {
+    fbRating = 0;
+    $('fbText').value = '';
+    $('fbStatus').innerHTML = '';
+    document.querySelectorAll('.fb-star').forEach(s => s.classList.remove('active'));
+    $('fbOverlay').classList.add('open');
+  };
+
+  function closeFb() { $('fbOverlay').classList.remove('open'); }
+
+  $('fbOverlay').addEventListener('click', e => {
+    if (e.target === $('fbOverlay')) closeFb();
+  });
+
+  // Звёзды
+  document.querySelectorAll('.fb-star').forEach(star => {
+    star.onmouseenter = () => {
+      const v = +star.dataset.v;
+      document.querySelectorAll('.fb-star').forEach(s =>
+        s.classList.toggle('active', +s.dataset.v <= v)
+      );
+    };
+    star.onclick = () => { fbRating = +star.dataset.v; };
+  });
+  $('fbStars').onmouseleave = () => {
+    document.querySelectorAll('.fb-star').forEach(s =>
+      s.classList.toggle('active', +s.dataset.v <= fbRating)
+    );
+  };
+
+  // Отправка
+  $('fbSend').onclick = async () => {
+    const text = $('fbText').value.trim();
+    if (!text && !fbRating) { toast('Напишите отзыв или поставьте оценку.'); return; }
+
+    $('fbSend').disabled = true;
+    try {
+      const res = await fetch(API_BASE + '/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
+        body: JSON.stringify({ rating: fbRating, text: text })
+      });
+      if (res.ok) {
+        $('fbStatus').innerHTML = '<div class="fb-success">✓ Спасибо за отзыв!</div>';
+        setTimeout(closeFb, 1500);
+      } else {
+        toast('Не удалось отправить отзыв. Попробуйте позже.');
+      }
+    } catch (err) {
+      toast('Нет связи с сервером.');
+    } finally {
+      $('fbSend').disabled = false;
+    }
+  };
+
   initAuth();
 </script>
 </body>
