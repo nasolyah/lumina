@@ -325,6 +325,59 @@
     color: var(--muted);
   }
 
+  /* ── COMPARISON TABLE ── */
+  .compare-wrap {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    overflow-x: auto;
+  }
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 640px;
+  }
+  .compare-table th, .compare-table td {
+    padding: 20px 24px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
+  .compare-table tr:last-child th, .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table thead th {
+    font-family: 'Sora', sans-serif;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--muted);
+    background: rgba(108,99,255,0.06);
+  }
+  .compare-table thead th.col-us {
+    color: var(--white);
+  }
+  .compare-table th[scope="row"] {
+    font-family: 'Sora', sans-serif;
+    font-weight: 600;
+    color: var(--white);
+    white-space: nowrap;
+  }
+  .compare-table td { color: var(--muted); }
+  .compare-table td.col-us {
+    color: var(--text);
+    background: rgba(108,99,255,0.05);
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+  }
+  .compare-table thead th.col-us { border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+  .compare-logo {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .compare-logo .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 10px var(--glow);
+  }
+
   /* ── PRICING ── */
   .pricing-grid {
     display: grid;
@@ -676,6 +729,7 @@
     <div class="logo"><div class="logo-dot"></div>Lumina</div>
     <ul class="nav-links">
       <li><a href="#features">Возможности</a></li>
+      <li><a href="#why">Почему мы</a></li>
       <li><a href="#how">Как это работает</a></li>
       <li><a href="#pricing">Цены</a></li>
     </ul>
@@ -809,6 +863,54 @@
       </div>
     </section>
   </div>
+
+  <!-- WHY US / COMPARISON -->
+  <section class="section" id="why">
+    <div class="section-label">Почему мы</div>
+    <h2 class="section-title" style="margin-bottom:20px;">Сравнение по ключевым параметрам</h2>
+    <p style="color:var(--muted);font-size:0.95rem;margin-bottom:40px;max-width:640px;">Ниже — короткая справочная таблица, которая показывает, чем подход Lumina отличается от привычных чат-инструментов вроде Google NotebookLM.</p>
+
+    <div class="compare-wrap">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th scope="col">Критерий</th>
+            <th scope="col" class="col-us">
+              <div class="compare-logo"><span class="dot"></span> Lumina</div>
+            </th>
+            <th scope="col">Google NotebookLM</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Основной интерфейс</th>
+            <td class="col-us">Бесконечный холст — пространственная карта знаний</td>
+            <td>Чат и текстовые документы — линейный формат</td>
+          </tr>
+          <tr>
+            <th scope="row">Работа с контентом</th>
+            <td class="col-us">Сохраняет исходную структуру, фрагменты текста и изображения как в первоисточнике</td>
+            <td>Пересобирает и переписывает контент в саммари, гайды и ответы</td>
+          </tr>
+          <tr>
+            <th scope="row">Визуальные элементы</th>
+            <td class="col-us">Извлекает и визуально связывает графики, диаграммы и формулы</td>
+            <td>В основном игнорирует сложные визуальные элементы или не справляется с ними</td>
+          </tr>
+          <tr>
+            <th scope="row">Навигация</th>
+            <td class="col-us">Масштабирование, панорамирование, переход по узлам и связям карты</td>
+            <td>Промпты, переписка в чате, прокрутка текстовых блоков</td>
+          </tr>
+          <tr>
+            <th scope="row">Цель пользователя</th>
+            <td class="col-us">Понять структуру и логику аргументации автора</td>
+            <td>Найти конкретный ответ или получить общее саммари по теме</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
 
   <!-- PRICING -->
   <section class="section" id="pricing">
