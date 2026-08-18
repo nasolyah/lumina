@@ -15,6 +15,7 @@ Lum / Lumina — FastAPI-обёртка над GraphRAG пайплайном.
 import io
 import os
 import logging
+import requests
 from typing import Optional
 import jwt
 from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
@@ -60,6 +61,10 @@ app.add_middleware(
 # ключ кэшируется, запроса к Supabase на каждый вызов нет. Это закрывает бэкенд:
 # без валидного токена /api/analyze и /api/extract не отдаются (защита баланса Gemini).
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+# Секретный ключ Supabase (новый формат sb_secret_… ; отзывной и ротируемый по-отдельности,
+# предпочтителен легаси service_role). Нужен ТОЛЬКО серверу — обходит RLS, храним в env
+# Render, не на фронте. Используется для записи фидбэка в таблицу feedback через REST.
+SUPABASE_SECRET_KEY = os.environ.get("SUPABASE_SECRET_KEY", "")
 _jwks_client = (
     jwt.PyJWKClient(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json")
     if SUPABASE_URL else None
@@ -169,16 +174,45 @@ def analyze(req: AnalyzeRequest, user: dict = Depends(require_user)):
 
 @app.post("/api/feedback")
 def submit_feedback(req: FeedbackRequest, user: dict = Depends(require_user)):
-    """Сохраняет фидбэк от пользователя (оценка 1-5 + текст) в feedback.jsonl."""
+    """
+    Сохраняет фидбэк (оценка 1-5 + текст) в таблицу Supabase `feedback`.
+
+    Пишем именно в БД, а не в файл: у Render эфемерная ФС — feedback.jsonl исчезал
+    при каждом редеплое/рестарте, отзывы терялись. Запись идёт с сервера через REST
+    с секретным ключом (обходит RLS). Если ключ/URL не заданы (локальная разработка)
+    — падаем на запись в файл, чтобы не терять фидбэк в dev.
+    """
     import datetime, json
 
     entry = {
-        "timestamp": datetime.datetime.utcnow().isoformat(),
         "user_id": user.get("sub"),
         "rating": req.rating,
         "text": req.text,
     }
 
+    if SUPABASE_URL and SUPABASE_SECRET_KEY:
+        try:
+            resp = requests.post(
+                f"{SUPABASE_URL}/rest/v1/feedback",
+                headers={
+                    "apikey": SUPABASE_SECRET_KEY,
+                    "Authorization": f"Bearer {SUPABASE_SECRET_KEY}",
+                    "Content-Type": "application/json",
+                    "Prefer": "return=minimal",
+                },
+                json=entry,
+                timeout=10,
+            )
+            resp.raise_for_status()
+            return {"status": "ok"}
+        except requests.RequestException as e:
+            # Тело ответа Supabase (если есть) поможет отладить схему/RLS в логах Render.
+            body = getattr(e.response, "text", "") if getattr(e, "response", None) else ""
+            logger.error("feedback: не удалось записать в Supabase: %s %s", e, body)
+            raise HTTPException(status_code=502, detail="Не удалось сохранить отзыв.")
+
+    # Фолбэк для локальной разработки (Supabase не настроен).
+    entry["timestamp"] = datetime.datetime.utcnow().isoformat()
     feedback_path = os.environ.get("FEEDBACK_FILE", "feedback.jsonl")
     try:
         with open(feedback_path, "a", encoding="utf-8") as f:
