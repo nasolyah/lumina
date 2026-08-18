@@ -294,3 +294,40 @@ async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(require
         )
 
     return {"text": text, "chars": len(text), "pages": pages}
+
+
+@app.post("/api/ingest")
+async def ingest_pdf(file: UploadFile = File(...), user: dict = Depends(require_user)):
+    """
+    Spatial-режим (Этап 1): PDF → манифест документа {schema_version, pages, blocks}.
+    Страницы рендерятся с сохранением вёрстки, текст-блоки идут с координатами и
+    ДОСЛОВНО. Импорт spatial ленивый — если зависимости (pdfplumber/pypdfium2) ещё
+    не установлены на сервере, падает только этот эндпоинт, а не всё приложение.
+    """
+    filename = (file.filename or "").lower()
+    is_pdf = filename.endswith(".pdf") or file.content_type == "application/pdf"
+    if not is_pdf:
+        raise HTTPException(status_code=400, detail="Ожидается PDF-файл (.pdf).")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Пустой файл.")
+    if len(raw) > MAX_PDF_BYTES:
+        mb = MAX_PDF_BYTES // (1024 * 1024)
+        raise HTTPException(status_code=400, detail=f"Файл слишком большой (макс. {mb} МБ).")
+
+    try:
+        import spatial
+    except ImportError as e:
+        logger.error("ingest: зависимости spatial не установлены: %s", e)
+        raise HTTPException(status_code=501, detail="Spatial-режим недоступен на сервере.")
+
+    try:
+        manifest = spatial.build_manifest(raw)
+    except Exception as e:
+        logger.exception("ingest: не удалось построить манифест")
+        raise HTTPException(status_code=400, detail=f"Не удалось разобрать PDF: {type(e).__name__}")
+
+    if not manifest["pages"]:
+        raise HTTPException(status_code=400, detail="PDF без страниц или нечитаемый.")
+    return manifest

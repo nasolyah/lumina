@@ -115,6 +115,37 @@
   }
   .tnode-toggle:hover { transform: translateY(-50%) scale(1.15); }
 
+  /* ── SPATIAL-РЕЖИМ (Документ): страницы PDF + оверлей текст-блоков ────────── */
+  .doc-page { position: relative; margin: 0 auto 40px; border-radius: 6px;
+    overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,.5); background:#fff; }
+  .doc-page img { display: block; width: 100%; height: auto; }
+  .doc-blk { position: absolute; border-radius: 4px; cursor: pointer;
+    border: 1.5px solid transparent; transition: background .12s, border-color .12s; }
+  .doc-blk.text    { border-color: rgba(56,189,248,.45); background: rgba(56,189,248,.06); }
+  .doc-blk.heading { border-color: rgba(167,139,250,.6);  background: rgba(167,139,250,.12); }
+  .doc-blk.text:hover    { background: rgba(56,189,248,.22); }
+  .doc-blk.heading:hover { background: rgba(167,139,250,.3); }
+  /* Переключатель Граф/Документ */
+  .view-toggle { position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 10; display: flex; gap: 2px; padding: 3px;
+    background: rgba(18,18,42,.8); backdrop-filter: blur(8px);
+    border: 1px solid var(--border); border-radius: 999px; }
+  .vt-btn { border: none; background: transparent; color: var(--muted); cursor: pointer;
+    font: 600 12px 'Inter',sans-serif; padding: 6px 16px; border-radius: 999px; transition: .12s; }
+  .vt-btn.active { background: var(--glow, #7C6FF0); color: #fff; }
+  /* Панель дословного текста блока */
+  .block-panel { position: absolute; right: 16px; top: 16px; width: 320px; z-index: 11;
+    max-height: calc(100% - 32px); overflow: auto;
+    background: rgba(18,18,42,.9); backdrop-filter: blur(10px);
+    border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; }
+  .bp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .bp-tag { font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
+    padding: 2px 8px; border-radius: 999px; background: rgba(56,189,248,.18); color: #7dd3fc; }
+  .bp-tag.heading { background: rgba(167,139,250,.2); color: #c4b5fd; }
+  .bp-close { border: none; background: transparent; color: var(--muted); cursor: pointer; font-size: 14px; }
+  .bp-text { white-space: pre-wrap; font-size: 13px; line-height: 1.5; color: #CBD5E1;
+    border-left: 3px solid #38BDF8; padding-left: 10px; }
+
   /* legend */
   .legend {
     position: absolute; left: 16px; bottom: 16px; z-index: 10;
@@ -478,6 +509,17 @@
         <div class="item"><span class="sw" style="background:#34D399"></span>ответ (саб-чат)</div>
         <div class="item"><span class="ring"></span>путь к ответу</div>
       </div>
+      <!-- Переключатель Граф / Документ (spatial). Показывается, когда есть манифест PDF. -->
+      <div class="view-toggle hidden" id="viewToggle">
+        <button class="vt-btn active" id="vtGraph" data-view="graph">Граф</button>
+        <button class="vt-btn" id="vtDoc" data-view="spatial">Документ</button>
+      </div>
+      <!-- Панель дословного текста блока (spatial-режим) -->
+      <div class="block-panel hidden" id="blockPanel">
+        <div class="bp-head"><span class="bp-tag" id="bpTag"></span>
+          <button class="bp-close" id="bpClose" aria-label="Закрыть">✕</button></div>
+        <div class="bp-text" id="bpText"></div>
+      </div>
     </main>
 
     <!-- CHAT -->
@@ -662,6 +704,8 @@
   let chatMessages = [];     // переписка для сохранения: {role:'user',text} | {role:'bot',answer,explanation}
   let lastGraph = null;      // последний отрисованный граф/mindmap (для восстановления)
   let collapsed = new Set(); // id узлов со СВЁРНУТЫМИ детьми (сохраняется между перерисовками)
+  let lastManifest = null;   // манифест spatial-режима (страницы+блоки); MVP: только в сессии
+  let currentView = 'graph'; // 'graph' | 'spatial'
 
   // ── ЭЛЕМЕНТЫ ──
   const $ = id => document.getElementById(id);
@@ -713,10 +757,38 @@
       }
       currentText = data.text;
       fname.textContent = `${file.name} · ${data.pages} стр., ${data.chars.toLocaleString('ru')} символов`;
+      ingestPdf(file);   // фоном тянем spatial-манифест (не блокируем граф-поток)
     } catch (err) {
       fname.textContent = 'поддерживается .txt, .md, .pdf';
       toast('Нет связи с сервером для разбора PDF: ' + API_BASE);
     }
+  }
+
+  // Spatial (Этап 1): фоновый разбор PDF в манифест (страницы+блоки). Не блокирует
+  // граф-поток; при успехе показываем переключатель «Документ». MVP: только в сессии,
+  // в чат не сохраняется (см. docs/spatial-mvp-deferred.md).
+  async function ingestPdf(file){
+    resetSpatial();
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(API_BASE + '/api/ingest', { method: 'POST', headers: await authHeader(), body: fd });
+      if (!res.ok) return;   // spatial недоступен/ошибка — тихо остаёмся в граф-режиме
+      lastManifest = await res.json();
+      if (lastManifest && lastManifest.pages && lastManifest.pages.length) {
+        $('viewToggle').classList.remove('hidden');
+      }
+    } catch (_) { /* нет связи — просто без spatial */ }
+  }
+
+  // сброс spatial-состояния (новый источник/чат): прячем переключатель, назад в граф
+  function resetSpatial(){
+    lastManifest = null;
+    currentView = 'graph';
+    $('viewToggle').classList.add('hidden');
+    $('blockPanel').classList.add('hidden');
+    $('vtGraph').classList.add('active');
+    $('vtDoc').classList.remove('active');
   }
 
   // ── ОТКРЫТЬ/ЗАКРЫТЬ МОДАЛКУ ──
@@ -727,6 +799,7 @@
     currentText = '';
     $('fname').textContent = 'поддерживается .txt, .md, .pdf';
     $('srcText').value = '';
+    resetSpatial();
   }
   function openModal(){ overlay.classList.add('open'); }
   function closeModal(){ overlay.classList.remove('open'); }
@@ -1159,6 +1232,63 @@
     svg.innerHTML = paths.join('');
   }
 
+  // ── SPATIAL-РЕЖИМ (Документ): рендер манифеста PDF на том же холсте ──────────
+  // Страницы = реальный рендер (вёрстка сохранена), поверх — текст-блоки с bbox.
+  // Рендерим в #graphCanvas, поэтому зум/пан переиспользуются как есть.
+  function renderSpatial(manifest){
+    if (!manifest || !manifest.pages || !manifest.pages.length) return;
+    const byPage = {};
+    manifest.blocks.forEach(b => (byPage[b.page] ||= []).push(b));
+
+    const pagesHtml = manifest.pages.map(pg => {
+      const scale = pg.image_w / pg.width_pt;   // pt → px рендера
+      const blks = (byPage[pg.index] || []).map(b => {
+        const [x0, top, x1, bottom] = b.bbox;
+        const st = `left:${(x0*scale).toFixed(1)}px;top:${(top*scale).toFixed(1)}px;`
+                 + `width:${((x1-x0)*scale).toFixed(1)}px;height:${((bottom-top)*scale).toFixed(1)}px;`;
+        return `<div class="doc-blk ${b.kind}" data-bid="${esc(b.id)}" style="${st}"></div>`;
+      }).join('');
+      return `<div class="doc-page" style="width:${pg.image_w}px;">`
+           + `<img src="${pg.image}" width="${pg.image_w}" height="${pg.image_h}" alt="стр. ${pg.index+1}">`
+           + blks + `</div>`;
+    }).join('');
+
+    $('graph').innerHTML = `<div id="graphCanvas">${pagesHtml}</div>`;
+    gZoom = 0.85; gPanX = 40; gPanY = 30;
+    applyGraphTransform();
+  }
+
+  // показать дословный текст блока в панели (spatial)
+  function showBlock(bid){
+    const b = lastManifest && lastManifest.blocks.find(x => x.id === bid);
+    if (!b) return;
+    $('bpTag').textContent = b.kind === 'heading' ? 'заголовок' : 'текст-блок';
+    $('bpTag').className = 'bp-tag' + (b.kind === 'heading' ? ' heading' : '');
+    $('bpText').textContent = b.text;
+    $('blockPanel').classList.remove('hidden');
+  }
+
+  // переключение вида Граф/Документ
+  function setView(view){
+    if (view === 'spatial' && !lastManifest) return;
+    currentView = view;
+    $('vtGraph').classList.toggle('active', view === 'graph');
+    $('vtDoc').classList.toggle('active', view === 'spatial');
+    $('blockPanel').classList.add('hidden');
+    $('stageEmpty').classList.add('hidden');
+    if (view === 'spatial') {
+      renderSpatial(lastManifest);
+    } else if (lastGraph) {
+      renderGraph(lastGraph, true);
+    } else {
+      $('graph').innerHTML = '';
+      $('stageEmpty').classList.remove('hidden');
+    }
+  }
+  $('vtGraph').onclick = () => setView('graph');
+  $('vtDoc').onclick = () => setView('spatial');
+  $('bpClose').onclick = () => $('blockPanel').classList.add('hidden');
+
   // ── ЗУМ/ПАН ХОЛСТА (колесо мыши = зум к курсору, перетаскивание = пан) ──
   // Вешаем один раз на постоянный #graph (его innerHTML переписывается при каждом
   // renderGraph, но сам элемент — нет), работает для любого текущего графа.
@@ -1197,6 +1327,9 @@
   // если это был конец перетаскивания холста, а не настоящий клик по карточке)
   graphEl.addEventListener('click', e => {
     if (gDragMoved) { gDragMoved = false; return; }
+    // spatial: клик по текст-блоку → дословный текст в панели
+    const blk = e.target.closest('.doc-blk');
+    if (blk) { showBlock(blk.dataset.bid); return; }
     // клик по тогглу → свернуть/развернуть ветку (не открываем модалку)
     const tog = e.target.closest('.tnode-toggle');
     if (tog) {
@@ -1439,6 +1572,7 @@
       if (error || !data) return;
       currentChatId = data.id;
       currentText = data.source_text || '';
+      resetSpatial();   // старые чаты без манифеста — spatial недоступен, только граф
       chatMessages = Array.isArray(data.messages) ? data.messages : [];
       msgs.innerHTML = '';
       for (const m of chatMessages) {

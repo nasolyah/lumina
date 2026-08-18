@@ -5,3 +5,8 @@ pydantic==2.10.4
 pypdf==5.1.0
 python-multipart==0.0.20
 pyjwt[crypto]==2.10.1
+# Spatial PDF Mapper (Этап 1): layout-aware извлечение. Лицензионно-чистый стек
+# (без AGPL-PyMuPDF). Тяжелее по памяти/CPU — проверить лимиты воркера Render.
+pdfplumber==0.11.8
+pypdfium2==5.13.0
+Pillow==11.3.0
