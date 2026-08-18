@@ -88,31 +88,32 @@
      вертикали (flex-column внутри .tchildren), горизонталь растёт вложенностью
      (flex-row в .tnode-wrap) — строго слева направо, наложений в принципе быть
      не может (в отличие от vis-network, где высоту карточек надо было угадывать). */
-  .tree-forest { --h-gap: 90px; display: flex; flex-direction: column; gap: 64px; width: max-content; }
+  .tree-forest { --h-gap: 90px; display: flex; flex-direction: column; gap: 40px; width: max-content; }
   .tnode-wrap { display: flex; flex-direction: row; align-items: center; gap: var(--h-gap); position: relative; }
+  /* Узлы — «пилюли» (как в NotebookLM): только заголовок, сильное скругление,
+     компактно. Полный текст раздела открывается по клику в модалке. */
   .tnode {
-    flex: none; cursor: pointer; border-radius: 10px; padding: 10px 14px;
-    font-family: 'Inter', sans-serif; position: relative; z-index: 1;
+    flex: none; cursor: pointer; border-radius: 999px; padding: 9px 16px;
+    max-width: 240px; font-family: 'Inter', sans-serif; position: relative; z-index: 1;
     transition: transform .15s, box-shadow .15s;
   }
   .tnode:hover { transform: translateY(-2px); }
-  .tnode .t-title { font-weight: 700; line-height: 1.3; }
-  .tnode .t-excerpt { font-size: 12px; line-height: 1.45; margin-top: 4px; }
-  /* горизонтальная линия от карточки-родителя к вертикальной "спице" детей */
-  .tnode.has-children::after {
-    content: ''; position: absolute; top: 50%; right: calc(-1 * var(--h-gap)); width: var(--h-gap); height: 2px;
-    background: rgba(148,163,184,.35);
+  .tnode .t-title { font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+  /* Коннекторы рисуются кривыми bezier в SVG-оверлее (#graphLines) — цвет линии
+     = цвет ветки. CSS-линий (::before/::after, border-left) больше нет. */
+  .tchildren { display: flex; flex-direction: column; gap: 18px; }
+  #graphLines { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; z-index: 0; }
+  /* Тоггл свернуть/развернуть ветку (как в NotebookLM): кружок на правом крае
+     пилюли. Свёрнуто → число скрытых детей; развёрнуто → «−». */
+  .tnode-toggle {
+    position: absolute; top: 50%; right: -11px; transform: translateY(-50%);
+    width: 22px; height: 22px; border-radius: 50%; z-index: 3;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; line-height: 1;
+    border: 2px solid rgba(10,10,26,.92); cursor: pointer;
+    transition: transform .12s;
   }
-  .tnode.in-answer.has-children::after { background: #A78BFA; height: 2.5px; }
-  .tchildren {
-    display: flex; flex-direction: column; gap: 22px;
-    padding-left: 26px; border-left: 2px solid rgba(148,163,184,.35);
-  }
-  /* горизонтальный "ус" от спицы к каждому дочернему узлу */
-  .tchildren > .tnode-wrap::before {
-    content: ''; position: absolute; top: 50%; left: -26px; width: 26px; height: 2px;
-    background: rgba(148,163,184,.35);
-  }
+  .tnode-toggle:hover { transform: translateY(-50%) scale(1.15); }
 
   /* legend */
   .legend {
@@ -660,6 +661,7 @@
   let currentChatId = null;  // id строки в Supabase (null = новый несохранённый)
   let chatMessages = [];     // переписка для сохранения: {role:'user',text} | {role:'bot',answer,explanation}
   let lastGraph = null;      // последний отрисованный граф/mindmap (для восстановления)
+  let collapsed = new Set(); // id узлов со СВЁРНУТЫМИ детьми (сохраняется между перерисовками)
 
   // ── ЭЛЕМЕНТЫ ──
   const $ = id => document.getElementById(id);
@@ -1029,6 +1031,25 @@
       for (const c of (children.get(rid) || [])) paintFamily(c, FAM_PALETTE[famIdx++ % FAM_PALETTE.length]);
     }
 
+    // ── СВЁРНУТОСТЬ ПО УМОЛЧАНИЮ (новый граф): показываем корень + главные ветки,
+    // а всё глубже — свёрнуто (как в NotebookLM). При досборке саб-чата (preserveView)
+    // состояние НЕ трогаем — юзер мог уже что-то раскрыть.
+    if (!preserveView) {
+      collapsed = new Set();
+      for (const [id, lvl] of level) {
+        if (lvl >= 1 && (children.get(id) || []).length) collapsed.add(id);
+      }
+      // но путь к ответу видно сразу: разворачиваем всех предков in_answer-узлов
+      // (иначе подсвеченный ответ прятался бы в свёрнутой ветке после вопроса).
+      const parentOf = new Map();
+      for (const [pid, kids] of children) for (const c of kids) parentOf.set(c, pid);
+      graph.nodes.forEach(n => {
+        if (!n.in_answer) return;
+        let p = parentOf.get(n.id);
+        while (p != null) { collapsed.delete(p); p = parentOf.get(p); }
+      });
+    }
+
     // Рекурсивно строим вложенный HTML: <div class="tnode-wrap">карточка + .tchildren</div>.
     // Раскладку по вертикали/горизонтали целиком считает браузер (flex), поэтому
     // высота карточек может быть любой без риска наложений — в отличие от vis-network.
@@ -1054,33 +1075,88 @@
       const fg      = filled ? (isLightColor(typeColor) ? '#0A0A1A' : '#FFFFFF') : '#CBD5E1';
       const fontPx  = isCard ? 12.5 : (isRoot ? 16 : (isBranch ? 14 : 13));
       const glow    = n.in_answer ? 'box-shadow:0 0 18px rgba(167,139,250,.55);' : '';
-      const widthCss = isCard ? 'width:240px;' : '';
+      const isCollapsed = hasKids && collapsed.has(id);
 
+      // Пилюля: только заголовок. excerpt раздела показываем по клику в модалке.
       const body = isCard
-        ? `<div class="t-title">${esc(n.name)}</div><div class="t-excerpt">${esc(previewText(n.excerpt))}</div>`
+        ? `<div class="t-title">${esc(n.name)}</div>`
         : `<span class="t-title" style="font-weight:${isRoot||isBranch?700:500};">${esc(n.name)}</span>`;
+
+      // Тоггл на пилюлях с детьми: свёрнуто → число скрытых, развёрнуто → «−».
+      const togFg = isLightColor(typeColor) ? '#0A0A1A' : '#FFFFFF';
+      const toggle = hasKids
+        ? `<span class="tnode-toggle" style="background:${typeColor};color:${togFg};"
+             title="${isCollapsed ? 'Развернуть ветку' : 'Свернуть ветку'}">${isCollapsed ? kids.length : '−'}</span>`
+        : '';
 
       let html = `<div class="tnode-wrap">
         <div class="tnode${hasKids ? ' has-children' : ''}${n.in_answer ? ' in-answer' : ''}"
-             data-id="${esc(id)}"
-             style="background:${bg};border:${n.in_answer ? '2.5px' : '1.5px'} solid ${border};color:${fg};font-size:${fontPx}px;${widthCss}${glow}"
-             title="${esc(n.type)}${n.mentions > 1 ? ' · упоминаний: ' + n.mentions : ''}">${body}</div>`;
-      if (hasKids) {
+             data-id="${esc(id)}" data-col="${typeColor}"
+             style="background:${bg};border:${n.in_answer ? '2.5px' : '1.5px'} solid ${border};color:${fg};font-size:${fontPx}px;${glow}"
+             title="${esc(n.type)}${n.mentions > 1 ? ' · упоминаний: ' + n.mentions : ''}">${body}${toggle}</div>`;
+      if (hasKids && !isCollapsed) {
         html += `<div class="tchildren">${kids.map(renderNode).join('')}</div>`;
       }
       html += `</div>`;
       return html;
     }
 
-    $('graph').innerHTML = `<div id="graphCanvas"><div class="tree-forest">${roots.map(renderNode).join('')}</div></div>`;
+    $('graph').innerHTML = `<div id="graphCanvas"><svg id="graphLines"></svg><div class="tree-forest">${roots.map(renderNode).join('')}</div></div>`;
     // новый граф — сбрасываем зум/пан на дефолт; при досборке (саб-чат) сохраняем вид
     if (!preserveView) { gZoom = 1; gPanX = 60; gPanY = 40; }
     applyGraphTransform();
+    drawConnectors();
+    // web-шрифты могут догрузиться уже после первого layout и сдвинуть ширины
+    // узлов — перерисуем кривые, когда шрифты готовы (иначе линии чуть мимо).
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawConnectors);
   }
 
   function applyGraphTransform(){
     const canvas = document.getElementById('graphCanvas');
     if (canvas) canvas.style.transform = `translate(${gPanX}px, ${gPanY}px) scale(${gZoom})`;
+  }
+
+  // ── КОННЕКТОРЫ ГРАФА: кривые bezier в SVG-оверлее, как в NotebookLM ──
+  // Раскладку узлов по-прежнему считает flex; здесь мы лишь МЕРЯЕМ позиции готовых
+  // карточек и рисуем плавные линии родитель→ребёнок. SVG лежит внутри #graphCanvas,
+  // поэтому зум/пан (transform холста) применяются к линиям даром — перерисовка нужна
+  // только при смене структуры дерева (новый граф / досборка саб-чата), не при зуме.
+  function drawConnectors(){
+    const canvas = document.getElementById('graphCanvas');
+    const svg = document.getElementById('graphLines');
+    if (!canvas || !svg) return;
+    const forest = canvas.querySelector('.tree-forest');
+    if (!forest) return;
+    const W = forest.scrollWidth, H = forest.scrollHeight;
+    svg.setAttribute('width', W); svg.setAttribute('height', H);
+    svg.style.width = W + 'px'; svg.style.height = H + 'px';
+
+    // Координаты меряем через getBoundingClientRect и переводим в систему холста
+    // (transform-origin у #graphCanvas = 0 0): x_canvas = (x_screen - cRect.left) / zoom.
+    const cRect = canvas.getBoundingClientRect();
+    const z = gZoom || 1;
+    const paths = [];
+    canvas.querySelectorAll('.tnode-wrap').forEach(wrap => {
+      const parent  = wrap.querySelector(':scope > .tnode');
+      const kidsBox = wrap.querySelector(':scope > .tchildren');
+      if (!parent || !kidsBox) return;
+      const pr = parent.getBoundingClientRect();
+      const x1 = (pr.right - cRect.left) / z;
+      const y1 = (pr.top + pr.height / 2 - cRect.top) / z;
+      kidsBox.querySelectorAll(':scope > .tnode-wrap > .tnode').forEach(child => {
+        const kr = child.getBoundingClientRect();
+        const x2 = (kr.left - cRect.left) / z;
+        const y2 = (kr.top + kr.height / 2 - cRect.top) / z;
+        // цвет линии = цвет ветки ребёнка; путь ответа подсвечиваем фиолетовым
+        const inAns = child.classList.contains('in-answer');
+        const col = inAns ? '#A78BFA' : (child.dataset.col || 'rgba(148,163,184,.5)');
+        const w   = inAns ? 2.6 : 2;
+        const dx  = (x2 - x1) * 0.5;   // горизонтальные «плечи» → S-образная кривая
+        const d = `M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${(x1+dx).toFixed(1)} ${y1.toFixed(1)}, ${(x2-dx).toFixed(1)} ${y2.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+        paths.push(`<path d="${d}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linecap="round" opacity="${inAns ? 0.95 : 0.8}"/>`);
+      });
+    });
+    svg.innerHTML = paths.join('');
   }
 
   // ── ЗУМ/ПАН ХОЛСТА (колесо мыши = зум к курсору, перетаскивание = пан) ──
@@ -1121,6 +1197,16 @@
   // если это был конец перетаскивания холста, а не настоящий клик по карточке)
   graphEl.addEventListener('click', e => {
     if (gDragMoved) { gDragMoved = false; return; }
+    // клик по тогглу → свернуть/развернуть ветку (не открываем модалку)
+    const tog = e.target.closest('.tnode-toggle');
+    if (tog) {
+      const id = tog.closest('.tnode')?.dataset.id;
+      if (id != null && lastGraph) {
+        collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id);
+        renderGraph(lastGraph, true);   // перерисовать, сохраняя зум/пан
+      }
+      return;
+    }
     const card = e.target.closest('.tnode');
     if (!card) return;
     const n = nodeById[card.dataset.id];
