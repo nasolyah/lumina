@@ -1360,22 +1360,24 @@
     return d;
   }
 
-  // обратное сопоставление: узел графа → наиболее подходящий блок документа
-  // (для показа картинки-вырезки при клике по узлу и для перехода в документ).
+  // обратное сопоставление: узел графа → наиболее подходящий блок-АБЗАЦ документа.
+  // Заголовки пропускаем (иначе «Введение»-узел матчил бы заголовок «Введение» и в
+  // вырезке было бы одно слово, а не текст параграфа). Берём контент-блок с
+  // максимальным ПЕРЕКРЫТИЕМ слов (абсолютным), т.е. сам текст раздела.
   function matchNodeToBlock(n){
     if (!lastManifest || !lastManifest.blocks || !n) return null;
     const nt = new Set(_tokens((n.name || '') + ' ' + (n.full || n.excerpt || n.snippet || '')));
     if (!nt.size) return null;
-    let best = null, bestScore = 0;
+    let best = null, bestHits = 0;
     for (const b of lastManifest.blocks){
+      if (b.kind === 'heading') continue;      // заголовок — не контент
       const bt = _tokens(b.text);
-      if (!bt.length) continue;
+      if (bt.length < 3) continue;             // слишком коротко для абзаца
       let hit = 0;
       for (const w of bt) if (nt.has(w)) hit++;
-      const score = hit / bt.length;    // доля слов блока, покрытых узлом
-      if (score > bestScore) { bestScore = score; best = b; }
+      if (hit > bestHits) { bestHits = hit; best = b; }
     }
-    return bestScore > 0.15 ? best : null;
+    return bestHits >= 2 ? best : null;
   }
 
   // клик по блоку в «Документе»: найти узел → граф → развернуть → фокус → модалка
