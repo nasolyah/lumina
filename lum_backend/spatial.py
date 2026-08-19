@@ -104,17 +104,31 @@ def _group_words_into_blocks(words: list[dict]) -> list[dict]:
     if not lines:
         return []
 
-    heights = sorted(b[3] - b[1] for b in map(line_box, lines))
-    median_h = heights[len(heights) // 2] if heights else 0
+    line_boxes = [line_box(ln) for ln in lines]
+    lheights = [b[3] - b[1] for b in line_boxes]
+    median_h = sorted(lheights)[len(lheights) // 2] if lheights else 0
+
+    # адаптивный порог абзацного разрыва: разрыв между абзацами заметно больше
+    # обычного межстрочного интервала. Фиксированный порог рвал строки одного абзаца
+    # в PDF с крупным интерлиньяжем (и склеивал в плотном) — считаем от медианы.
+    # «обычный межстрочный интервал» = нижний перцентиль разрывов (самый плотный —
+    # это интервал ВНУТРИ абзаца; часто 0, когда строки вплотную). Нули НЕ выкидываем,
+    # иначе базой станет разрыв между абзацами и порог задерётся (всё слипнется).
+    gaps = sorted(max(0.0, line_boxes[i][1] - line_boxes[i - 1][3]) for i in range(1, len(lines)))
+    base_gap = gaps[len(gaps) // 5] if gaps else 0.0
+    # абзацный разрыв = обычный интервал ПЛЮС заметная добавка (доля высоты строки).
+    para_thresh = base_gap + max(median_h * 0.5, 3.0)
 
     blocks_lines: list[list] = []
     cur_lines = [lines[0]]
-    for prev, ln in zip(lines, lines[1:]):
-        gap = min(x["top"] for x in ln) - max(x["bottom"] for x in prev)
-        if gap > _PARA_GAP:
+    for i in range(1, len(lines)):
+        gap = line_boxes[i][1] - line_boxes[i - 1][3]
+        hprev, hcur = lheights[i - 1], lheights[i]
+        h_change = max(hprev, hcur) / max(min(hprev, hcur), 1) > 1.25
+        if gap > para_thresh or h_change:   # абзацный разрыв ИЛИ смена размера (заголовок↔текст)
             blocks_lines.append(cur_lines)
             cur_lines = []
-        cur_lines.append(ln)
+        cur_lines.append(lines[i])
     if cur_lines:
         blocks_lines.append(cur_lines)
 
