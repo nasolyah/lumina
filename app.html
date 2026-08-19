@@ -133,18 +133,6 @@
   .vt-btn { border: none; background: transparent; color: var(--muted); cursor: pointer;
     font: 600 12px 'Inter',sans-serif; padding: 6px 16px; border-radius: 999px; transition: .12s; }
   .vt-btn.active { background: var(--glow, #7C6FF0); color: #fff; }
-  /* Панель дословного текста блока */
-  .block-panel { position: absolute; right: 16px; top: 16px; width: 320px; z-index: 11;
-    max-height: calc(100% - 32px); overflow: auto;
-    background: rgba(18,18,42,.9); backdrop-filter: blur(10px);
-    border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; }
-  .bp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-  .bp-tag { font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
-    padding: 2px 8px; border-radius: 999px; background: rgba(56,189,248,.18); color: #7dd3fc; }
-  .bp-tag.heading { background: rgba(167,139,250,.2); color: #c4b5fd; }
-  .bp-close { border: none; background: transparent; color: var(--muted); cursor: pointer; font-size: 14px; }
-  .bp-text { white-space: pre-wrap; font-size: 13px; line-height: 1.5; color: #CBD5E1;
-    border-left: 3px solid #38BDF8; padding-left: 10px; }
 
   /* legend */
   .legend {
@@ -514,12 +502,6 @@
         <button class="vt-btn active" id="vtGraph" data-view="graph">Граф</button>
         <button class="vt-btn" id="vtDoc" data-view="spatial">Документ</button>
       </div>
-      <!-- Панель дословного текста блока (spatial-режим) -->
-      <div class="block-panel hidden" id="blockPanel">
-        <div class="bp-head"><span class="bp-tag" id="bpTag"></span>
-          <button class="bp-close" id="bpClose" aria-label="Закрыть">✕</button></div>
-        <div class="bp-text" id="bpText"></div>
-      </div>
     </main>
 
     <!-- CHAT -->
@@ -706,6 +688,7 @@
   let collapsed = new Set(); // id узлов со СВЁРНУТЫМИ детьми (сохраняется между перерисовками)
   let lastManifest = null;   // манифест spatial-режима (страницы+блоки); MVP: только в сессии
   let currentView = 'graph'; // 'graph' | 'spatial'
+  let treeParent = new Map();// child_id → parent_id остовного дерева (для разворота предков)
 
   // ── ЭЛЕМЕНТЫ ──
   const $ = id => document.getElementById(id);
@@ -787,7 +770,6 @@
     lastManifest = null;
     currentView = 'graph';
     $('viewToggle').classList.add('hidden');
-    $('blockPanel').classList.add('hidden');
     $('vtGraph').classList.add('active');
     $('vtDoc').classList.remove('active');
   }
@@ -1087,6 +1069,11 @@
       if (!children.has(pid)) children.set(pid, []);
       children.get(pid).push(cid);
     });
+    // карта родителей (глобальна) — нужна и для разворота предков при прыжке из
+    // spatial-режима на конкретный узел, и для in_answer ниже.
+    treeParent = new Map();
+    for (const [pid, kids] of children) for (const c of kids) treeParent.set(c, pid);
+
     // корни "леса" — все узлы нулевого уровня (обычно один; больше одного,
     // если в графе есть несвязанные острова — тогда рисуем несколько деревьев).
     const roots = graph.nodes.filter(n => level.get(n.id) === 0).map(n => n.id);
@@ -1115,12 +1102,10 @@
       }
       // но путь к ответу видно сразу: разворачиваем всех предков in_answer-узлов
       // (иначе подсвеченный ответ прятался бы в свёрнутой ветке после вопроса).
-      const parentOf = new Map();
-      for (const [pid, kids] of children) for (const c of kids) parentOf.set(c, pid);
       graph.nodes.forEach(n => {
         if (!n.in_answer) return;
-        let p = parentOf.get(n.id);
-        while (p != null) { collapsed.delete(p); p = parentOf.get(p); }
+        let p = treeParent.get(n.id);
+        while (p != null) { collapsed.delete(p); p = treeParent.get(p); }
       });
     }
 
@@ -1291,14 +1276,46 @@
     };
   }
 
-  // показать дословный текст блока в панели (spatial)
-  function showBlock(bid){
+  // ── КЛИК ПО БЛОКУ → ПРЫЖОК НА ГРАФ ──────────────────────────────────────────
+  // Блоки документа и узлы графа строятся разными пайплайнами (нет общего ID),
+  // поэтому сопоставляем по тексту: какой узел лучше всего «покрывает» слова блока.
+  function _tokens(s){
+    return (s || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(w => w.length > 2);
+  }
+  function matchBlockToNode(text){
+    if (!lastGraph || !lastGraph.nodes) return null;
+    const bt = new Set(_tokens(text));
+    if (!bt.size) return null;
+    let best = null, bestScore = 0;
+    for (const n of lastGraph.nodes){
+      const nt = _tokens((n.name || '') + ' ' + (n.full || n.excerpt || n.snippet || ''));
+      if (!nt.length) continue;
+      let hit = 0;
+      for (const w of nt) if (bt.has(w)) hit++;
+      const score = hit / bt.size;   // доля слов блока, покрытых узлом
+      if (score > bestScore) { bestScore = score; best = n; }
+    }
+    return bestScore > 0 ? best : null;   // без совпадений совсем — не прыгаем
+  }
+
+  // развернуть всех предков узла (иначе он спрятан в свёрнутой ветке)
+  function expandToNode(id){
+    let p = treeParent.get(id);
+    while (p != null) { collapsed.delete(p); p = treeParent.get(p); }
+  }
+
+  // клик по блоку в «Документе»: найти узел → граф → развернуть → фокус → модалка
+  function jumpFromBlock(bid){
     const b = lastManifest && lastManifest.blocks.find(x => x.id === bid);
     if (!b) return;
-    $('bpTag').textContent = b.kind === 'heading' ? 'заголовок' : 'текст-блок';
-    $('bpTag').className = 'bp-tag' + (b.kind === 'heading' ? ' heading' : '');
-    $('bpText').textContent = b.text;
-    $('blockPanel').classList.remove('hidden');
+    const node = matchBlockToNode(b.text);
+    if (!node) return;
+    expandToNode(node.id);
+    setView('graph');                     // рендерит lastGraph с развёрнутыми предками
+    requestAnimationFrame(() => {         // ждём отрисовку DOM графа
+      focusNodeById(node.id);
+      openNodeModal(node);
+    });
   }
 
   // переключение вида Граф/Документ
@@ -1307,7 +1324,6 @@
     currentView = view;
     $('vtGraph').classList.toggle('active', view === 'graph');
     $('vtDoc').classList.toggle('active', view === 'spatial');
-    $('blockPanel').classList.add('hidden');
     $('stageEmpty').classList.add('hidden');
     if (view === 'spatial') {
       renderSpatial(lastManifest);
@@ -1320,7 +1336,6 @@
   }
   $('vtGraph').onclick = () => setView('graph');
   $('vtDoc').onclick = () => setView('spatial');
-  $('bpClose').onclick = () => $('blockPanel').classList.add('hidden');
 
   // ── ЗУМ/ПАН ХОЛСТА (колесо мыши = зум к курсору, перетаскивание = пан) ──
   // Вешаем один раз на постоянный #graph (его innerHTML переписывается при каждом
@@ -1362,7 +1377,7 @@
     if (gDragMoved) { gDragMoved = false; return; }
     // spatial: клик по текст-блоку → дословный текст в панели
     const blk = e.target.closest('.doc-blk');
-    if (blk) { showBlock(blk.dataset.bid); return; }
+    if (blk) { jumpFromBlock(blk.dataset.bid); return; }
     // клик по тогглу → свернуть/развернуть ветку (не открываем модалку)
     const tog = e.target.closest('.tnode-toggle');
     if (tog) {
@@ -1379,20 +1394,11 @@
     if (n) openNodeModal(n);
   });
 
-  // подсветить узел из чипа "путь к ответу": подвинуть холст так, чтобы карточка
-  // оказалась по центру видимой области (с учётом текущего зума) + вспышка рамки.
-  // Пробуем по id, затем по имени (в mind-map id = имя понятия).
-  window.focusPath = (i) => {
-    const p = (window._lastPath || [])[i];
-    if (!p) return;
-    let card = document.querySelector(`.tnode[data-id="${CSS.escape(p.id)}"]`);
-    if (!card) {
-      const nrm = (p.name || '').trim().toLowerCase();
-      card = [...document.querySelectorAll('.tnode')].find(
-        el => (nodeById[el.dataset.id]?.name || '').trim().toLowerCase() === nrm
-      );
-    }
-    if (!card) return;
+  // центрировать холст на карточке + вспышка рамки (общее для focusPath и прыжка
+  // из spatial-режима). Возвращает false, если карточки такого узла нет в DOM.
+  function focusNodeById(id){
+    const card = document.querySelector(`.tnode[data-id="${CSS.escape(id)}"]`);
+    if (!card) return false;
     const canvas = document.getElementById('graphCanvas');
     if (canvas) {
       // локальные (нетрансформированные) координаты карточки относительно холста —
@@ -1412,6 +1418,19 @@
     const prevShadow = card.style.boxShadow;
     card.style.boxShadow = '0 0 0 3px #A78BFA, 0 0 24px rgba(167,139,250,.7)';
     setTimeout(() => { card.style.boxShadow = prevShadow; }, 1200);
+    return true;
+  }
+
+  // подсветить узел из чипа "путь к ответу": по id, затем по имени (id = имя понятия).
+  window.focusPath = (i) => {
+    const p = (window._lastPath || [])[i];
+    if (!p) return;
+    if (focusNodeById(p.id)) return;
+    const nrm = (p.name || '').trim().toLowerCase();
+    const alt = [...document.querySelectorAll('.tnode')].find(
+      el => (nodeById[el.dataset.id]?.name || '').trim().toLowerCase() === nrm
+    );
+    if (alt) focusNodeById(alt.dataset.id);
   };
 
   // ── СООБЩЕНИЯ ──
