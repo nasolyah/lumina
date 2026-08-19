@@ -709,6 +709,7 @@
   let lastManifest = null;   // манифест spatial-режима (страницы+блоки); MVP: только в сессии
   let currentView = 'graph'; // 'graph' | 'spatial'
   let treeParent = new Map();// child_id → parent_id остовного дерева (для разворота предков)
+  let currentUserEmail = ''; // email текущего пользователя (для обхода лимита владельцем)
 
   // ── ЭЛЕМЕНТЫ ──
   const $ = id => document.getElementById(id);
@@ -952,6 +953,8 @@
   // (не строим граф, если лимит исчерпан); настоящее ограничение — триггер в БД
   // на INSERT в chats, он же инкрементит счётчик, см. saveChat().
   const FREE_GRAPH_LIMIT = 5;
+  // владельцы без лимита (совпадает с исключением в триггере check_chat_limit)
+  const OWNER_EMAILS = ['markingmark33@gmail.com'];
   const paywallOverlay = $('paywallOverlay');
   function openPaywall(used){
     if (typeof used === 'number') {
@@ -968,6 +971,7 @@
   // заново до бесконечности. Счётчик ведёт триггер в БД при вставке в chats.
   async function countUserGraphs(){
     if (!sb) return 0;
+    if (OWNER_EMAILS.includes(currentUserEmail)) return 0;   // владелец — без лимита
     const { data, error } = await sb.from('usage_counters').select('graphs_used').maybeSingle();
     if (error) { console.error('countUserGraphs', error); return 0; }
     return (data && data.graphs_used) || 0;
@@ -1703,6 +1707,7 @@
   function hideGate(){ $('authGate').classList.remove('show'); }
 
   function showUser(user){
+    currentUserEmail = user.email || '';
     const name = user.user_metadata?.full_name || user.user_metadata?.name || user.email || 'Пользователь';
     const avatar = user.user_metadata?.avatar_url || user.user_metadata?.picture;
     $('userName').textContent = name;
