@@ -1535,6 +1535,24 @@
       cap.style.cssText = 'font:13px/1.4 Inter,sans-serif;color:#334155;padding:8px 12px;background:#fff;';
       box.appendChild(cap);
     }
+    // навигация фигура→текст: блоки, которые ссылаются на эту фигуру (Рис. N)
+    const refs = (lastManifest.links || []).filter(l => l.figure === fid).map(l => l.block);
+    if (refs.length) {
+      const btn = document.createElement('button');
+      btn.textContent = '↑ Где упоминается в тексте';
+      btn.style.cssText = 'display:block;width:100%;padding:9px 14px;font:600 13px Inter,sans-serif;'
+        + 'background:#7C6FF0;color:#fff;border:none;cursor:pointer;';
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        $('figOverlay').classList.remove('open');
+        if (currentView !== 'spatial') setView('spatial');
+        requestAnimationFrame(() => {
+          const el = document.querySelector(`.doc-blk[data-bid="${CSS.escape(refs[0])}"]`);
+          if (el) centerAndFlash(el);
+        });
+      };
+      box.appendChild(btn);
+    }
     $('figOverlay').classList.add('open');
   }
   $('figOverlay').onclick = () => $('figOverlay').classList.remove('open');
