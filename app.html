@@ -839,7 +839,9 @@
     //  - клик по узлу графа → вырезка ВСЕГО раздела (union блоков по block_ids);
     //  - нет координат (текст/старый граф) → текст узла.
     const snip = $('nodeSnippet');
-    const cw = Math.min(560, (window.innerWidth || 700) - 150);   // ширина под контейнер модалки
+    // ширина вырезки с ЯВНЫМ отступом от границ контейнера (мерим по факту, если можем)
+    const inner = snip.clientWidth || 560;
+    const cw = Math.max(240, Math.min(inner - 24, (window.innerWidth || 700) - 190));
     let cropEl = null;
     if (block) cropEl = blockCropEl(block, cw);                    // кликнутый блок
     else if (secBlocks.length) cropEl = sectionCropEl(n, cw);      // весь раздел по block_ids
@@ -847,13 +849,16 @@
     const frag = (n.full || n.snippet || '').trim();
     if (cropEl) {
       snip.textContent = '';
-      snip.style.maxHeight = '52vh'; snip.style.overflowY = 'auto';   // высокий раздел — скролл
+      // центрируем вырезку с отступами от границ; высокий раздел — скролл
+      snip.style.maxHeight = '52vh'; snip.style.overflowY = 'auto';
+      snip.style.display = 'flex'; snip.style.flexDirection = 'column'; snip.style.alignItems = 'center';
       snip.appendChild(cropEl);
       snip.previousElementSibling.textContent = 'Фрагмент источника';
       $('nodeSnippetWrap').style.display = '';
     } else if (frag) {
       snip.textContent = frag;
       snip.style.maxHeight = ''; snip.style.overflowY = '';
+      snip.style.display = ''; snip.style.alignItems = '';
       snip.previousElementSibling.textContent = n.type === 'answer' ? 'Ответ' : 'Фрагмент источника';
       $('nodeSnippetWrap').style.display = '';
     } else {
