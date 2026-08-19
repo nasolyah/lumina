@@ -58,14 +58,18 @@ def _is_noise(text: str) -> bool:
     return len(t) >= 10 and leaders / len(t) > 0.85
 
 
-def _render_page_dataurl(pdf_page) -> tuple[str, int, int]:
-    """Рендер страницы pypdfium2 → (data URL WebP, ширина_px, высота_px)."""
+def _render_page_webp(pdf_page) -> tuple[bytes, int, int]:
+    """Рендер страницы pypdfium2 → (WebP-байты, ширина_px, высота_px)."""
     scale = RENDER_DPI / 72.0
     pil = pdf_page.render(scale=scale).to_pil()
     buf = io.BytesIO()
     pil.save(buf, format="WEBP", quality=WEBP_QUALITY, method=4)
-    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-    return f"data:image/webp;base64,{b64}", pil.width, pil.height
+    return buf.getvalue(), pil.width, pil.height
+
+
+def _dataurl_sink(page_index: int, webp: bytes) -> str:
+    """Sink по умолчанию: картинка страницы как data URL (dev / без Storage)."""
+    return "data:image/webp;base64," + base64.b64encode(webp).decode("ascii")
 
 
 def _group_words_into_blocks(words: list[dict]) -> list[dict]:
@@ -130,8 +134,16 @@ def _group_words_into_blocks(words: list[dict]) -> list[dict]:
     return out
 
 
-def build_manifest(pdf_bytes: bytes) -> dict:
-    """PDF-байты → манифест {schema_version, pages[], blocks[]}."""
+def build_manifest(pdf_bytes: bytes, image_sink=None) -> dict:
+    """
+    PDF-байты → манифест {schema_version, pages[], blocks[]}.
+
+    image_sink(page_index, webp_bytes) -> str: куда деть картинку страницы и что
+    записать в pages[].image. По умолчанию — data URL (dev / без Storage). Для
+    прода передают sink, кладущий WebP в Supabase Storage и возвращающий URL/путь
+    (см. storage.py). Так извлечение остаётся чистым и тестируемым локально.
+    """
+    sink = image_sink or _dataurl_sink
     pages_out, blocks_out = [], []
     order = 0
 
@@ -141,7 +153,8 @@ def build_manifest(pdf_bytes: bytes) -> dict:
             n = min(len(pdf.pages), MAX_PAGES)
             for pi in range(n):
                 page = pdf.pages[pi]
-                img, iw, ih = _render_page_dataurl(doc[pi])
+                webp, iw, ih = _render_page_webp(doc[pi])
+                img = sink(pi, webp)
                 words = page.extract_words(use_text_flow=False, keep_blank_chars=False)
                 kept = 0
                 for b in _group_words_into_blocks(words):

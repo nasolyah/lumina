@@ -25,10 +25,21 @@
 
 ### 1. Хранилище картинок — Supabase Storage (сейчас data URL)
 MVP embed'ит страницы как base64 data URL прямо в манифест — быстро, но раздувает JSON
-и не годится для прода. Позже:
-- отдельный bucket + signed URLs;
-- **перегенерация из PDF по запросу** (кэш с TTL) вместо вечного хранения PNG — Storage не пухнет;
-- удаление артефактов при удалении чата; квоты по тарифу (через существующий `usage_counters`).
+и не годится для прода.
+- ✅ **Бэкенд-фундамент готов** (storage.py):
+  - `spatial.build_manifest(pdf, image_sink=...)` — извлечение отделено от места хранения;
+  - `storage.make_sink(prefix)` льёт WebP в приватный бакет, в манифест пишет ПУТЬ;
+  - cache-control (год, immutable) — бережём egress на повторных просмотрах;
+  - за флагом `SPATIAL_STORAGE=1` (по умолчанию выкл → data URL, ничего не ломается);
+  - `/api/ingest` отдаёт `doc_id`, `image_kind`, `bucket`.
+- ⏳ **Осталось:**
+  - **фронт**: сохранять манифест (пути, не data URL) в `chats`, при открытии подписывать
+    URL через supabase-js (`sb.storage.from(bucket).createSignedUrl(path)`) и рисовать spatial;
+  - **колонка** `manifest jsonb` в таблице `chats`;
+  - **твой шаг в Supabase**: выполнить `lum_backend/supabase_storage.sql` (бакет + RLS),
+    задать env `SPATIAL_STORAGE=1` на Render;
+  - перегенерация из PDF по запросу вместо вечного хранения (Storage не пухнет);
+  - удаление артефактов при удалении чата; квоты по тарифу (`usage_counters`).
 
 ### 2. Async-обработка (риск памяти/таймаутов Render)
 Сейчас извлечение синхронно. Для больших PDF:

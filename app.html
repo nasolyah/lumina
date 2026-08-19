@@ -765,8 +765,8 @@
   }
 
   // Spatial (Этап 1): фоновый разбор PDF в манифест (страницы+блоки). Не блокирует
-  // граф-поток; при успехе показываем переключатель «Документ». MVP: только в сессии,
-  // в чат не сохраняется (см. docs/spatial-mvp-deferred.md).
+  // граф-поток; при успехе показываем переключатель «Документ». В Storage-режиме
+  // манифест сохраняется в чат (saveChat), в dataurl-режиме — только в сессии.
   async function ingestPdf(file){
     resetSpatial();
     try {
@@ -776,6 +776,7 @@
       if (!res.ok) return;   // spatial недоступен/ошибка — тихо остаёмся в граф-режиме
       lastManifest = await res.json();
       if (lastManifest && lastManifest.pages && lastManifest.pages.length) {
+        await hydrateSpatial(lastManifest);   // подписать URL (Storage) до показа
         $('viewToggle').classList.remove('hidden');
       }
     } catch (_) { /* нет связи — просто без spatial */ }
@@ -1248,14 +1249,46 @@
                  + `width:${((x1-x0)*scale).toFixed(1)}px;height:${((bottom-top)*scale).toFixed(1)}px;`;
         return `<div class="doc-blk ${b.kind}" data-bid="${esc(b.id)}" style="${st}"></div>`;
       }).join('');
+      // image_url — подписанный URL из Storage (заполняет hydrateSpatial);
+      // fallback на image (data URL в dev-режиме без Storage).
+      const src = pg.image_url || pg.image;
       return `<div class="doc-page" style="width:${pg.image_w}px;">`
-           + `<img src="${pg.image}" width="${pg.image_w}" height="${pg.image_h}" alt="стр. ${pg.index+1}">`
+           + `<img src="${src}" width="${pg.image_w}" height="${pg.image_h}" alt="стр. ${pg.index+1}">`
            + blks + `</div>`;
     }).join('');
 
     $('graph').innerHTML = `<div id="graphCanvas">${pagesHtml}</div>`;
     gZoom = 0.85; gPanX = 40; gPanY = 30;
     applyGraphTransform();
+  }
+
+  // Подготовка манифеста к показу: в режиме Storage картинки страниц — это ПУТИ,
+  // подписываем их signed-URL через supabase-js (RLS: владелец своей папки). В
+  // dev-режиме (image_kind='dataurl') image уже готов — просто копируем.
+  async function hydrateSpatial(m){
+    if (!m || !m.pages) return;
+    if (m.image_kind !== 'storage') { m.pages.forEach(p => p.image_url = p.image); return; }
+    if (!sb || !m.bucket) return;
+    try {
+      const paths = m.pages.map(p => p.image);
+      const { data, error } = await sb.storage.from(m.bucket).createSignedUrls(paths, 3600);
+      if (error) { console.error('hydrateSpatial', error); return; }
+      data.forEach((d, i) => { if (d && d.signedUrl) m.pages[i].image_url = d.signedUrl; });
+    } catch (e) { console.error('hydrateSpatial', e); }
+  }
+
+  // Манифест для сохранения в чат: только режим Storage (пути лёгкие). Выкидываем
+  // транзиентные signed-URL (истекают). В dataurl-режиме не сохраняем (тяжело).
+  function slimManifestForSave(m){
+    if (!m || m.image_kind !== 'storage') return null;
+    return {
+      schema_version: m.schema_version, image_kind: m.image_kind, bucket: m.bucket,
+      doc_id: m.doc_id, truncated: m.truncated, blocks: m.blocks,
+      pages: m.pages.map(p => ({
+        index: p.index, width_pt: p.width_pt, height_pt: p.height_pt,
+        image_w: p.image_w, image_h: p.image_h, image: p.image, sparse: p.sparse,
+      })),
+    };
   }
 
   // показать дословный текст блока в панели (spatial)
@@ -1509,6 +1542,10 @@
     const firstUser = chatMessages.find(m => m.role === 'user' && !/^О чём этот текст/.test(m.text));
     const title = ((firstUser && firstUser.text) || currentText).slice(0, 60);
     const row = { title, source_text: currentText, messages: chatMessages, mindmap: lastGraph };
+    // spatial-манифест (только Storage-режим — лёгкий, пути а не data URL). Требует
+    // колонку chats.manifest jsonb (см. supabase_storage.sql). В dataurl-режиме null.
+    const savedManifest = slimManifestForSave(lastManifest);
+    if (savedManifest) row.manifest = savedManifest;
     try {
       if (currentChatId) {
         await sb.from('chats').update({ ...row, updated_at: new Date().toISOString() }).eq('id', currentChatId);
@@ -1581,6 +1618,12 @@
       }
       $('stageEmpty').classList.add('hidden');
       if (data.mindmap) { lastGraph = data.mindmap; renderGraph(data.mindmap); }
+      // восстановить spatial из сохранённого манифеста (чаты v2 со Storage)
+      if (data.manifest && data.manifest.pages && data.manifest.pages.length) {
+        lastManifest = data.manifest;
+        await hydrateSpatial(lastManifest);
+        $('viewToggle').classList.remove('hidden');
+      }
       $('q').disabled = false; $('askBtn').disabled = false;
       closeChatsDrawer();
     } catch (e) { console.error('openChat', e); }

@@ -14,6 +14,7 @@ Lum / Lumina — FastAPI-обёртка над GraphRAG пайплайном.
 
 import io
 import os
+import uuid
 import logging
 import requests
 from typing import Optional
@@ -322,12 +323,28 @@ async def ingest_pdf(file: UploadFile = File(...), user: dict = Depends(require_
         logger.error("ingest: зависимости spatial не установлены: %s", e)
         raise HTTPException(status_code=501, detail="Spatial-режим недоступен на сервере.")
 
+    # Персист: если Storage настроен (SPATIAL_STORAGE=1 + ключи), картинки страниц
+    # льём в приватный бакет, а в манифест пишем пути; иначе — data URL как раньше.
+    import storage
+    doc_id = uuid.uuid4().hex
+    sink = None
+    image_kind = "dataurl"
+    if storage.is_configured():
+        sink = storage.make_sink(f"{user.get('sub')}/{doc_id}")
+        image_kind = "storage"
+
     try:
-        manifest = spatial.build_manifest(raw)
+        manifest = spatial.build_manifest(raw, image_sink=sink)
     except Exception as e:
         logger.exception("ingest: не удалось построить манифест")
         raise HTTPException(status_code=400, detail=f"Не удалось разобрать PDF: {type(e).__name__}")
 
     if not manifest["pages"]:
         raise HTTPException(status_code=400, detail="PDF без страниц или нечитаемый.")
+
+    # doc_id + image_kind нужны фронту: при 'storage' pages[].image = путь в бакете
+    # (подписать через supabase-js), при 'dataurl' — сама картинка.
+    manifest["doc_id"] = doc_id
+    manifest["image_kind"] = image_kind
+    manifest["bucket"] = storage.BUCKET if image_kind == "storage" else None
     return manifest
