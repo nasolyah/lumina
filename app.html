@@ -295,7 +295,7 @@
 
   /* error toast */
   .toast {
-    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(120%);
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(calc(100% + 40px));
     background: var(--card); border: 1px solid var(--warn); color: var(--text);
     padding: 12px 18px; border-radius: 12px; font-size: 13px; z-index: 200;
     transition: transform .3s; max-width: 90vw;
@@ -562,6 +562,8 @@
         style="position:absolute;top:12px;right:14px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:#94A3B8;font-size:20px;line-height:1;cursor:pointer;border-radius:8px;">✕</button>
       <h2 id="nodeTitle" style="margin-right:28px;"></h2>
       <div class="sub" id="nodeType"></div>
+      <button id="nodeToDoc" title="Показать эту ветку в документе"
+        style="display:none;margin-top:10px;padding:6px 14px;font-size:12.5px;background:rgba(124,111,240,.15);border:1px solid #7C6FF0;color:#c4b5fd;border-radius:8px;cursor:pointer;">📄 Открыть в документе</button>
       <div id="nodeDesc" style="margin:10px 0 0;color:#CBD5E1;font-size:14px;line-height:1.5;"></div>
       <div id="nodeSnippetWrap" style="margin-top:16px;">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7C6FF0;margin-bottom:6px;">Фрагмент источника</div>
@@ -769,6 +771,7 @@
   function resetSpatial(){
     lastManifest = null;
     currentView = 'graph';
+    if (typeof viewState !== 'undefined') { viewState.graph = null; viewState.spatial = null; }
     $('viewToggle').classList.add('hidden');
     $('vtGraph').classList.add('active');
     $('vtDoc').classList.remove('active');
@@ -796,9 +799,12 @@
   const nodeOverlay = $('nodeOverlay');
   const TYPE_LABEL = { concept:'Концепция', method:'Метод', person:'Персона', term:'Термин', branch:'Тематическая ветка', section:'Раздел документа', answer:'Ответ (саб-чат)' };
   let nodeModalId = null;   // id узла, открытого сейчас в модалке (к нему крепится саб-чат)
+  let nodeModalBlock = null;// блок документа, связанный с открытым узлом (для перехода в документ)
 
   function openNodeModal(n, block){
     nodeModalId = n.id;
+    nodeModalBlock = block || null;                 // для кнопки «Открыть в документе»
+    $('nodeToDoc').style.display = block ? '' : 'none';
     $('nodeTitle').textContent = n.name || '';
     $('nodeType').textContent = TYPE_LABEL[n.type] || n.type || '';
     // у узла-ответа показываем вопрос как описание
@@ -908,6 +914,18 @@
   $('nodeClose').onclick = closeNodeModal;
   nodeOverlay.addEventListener('click', e => { if (e.target === nodeOverlay) closeNodeModal(); });
 
+  // переход из графа (ветки) в документ: закрыть модалку → «Документ» → фокус на блоке
+  $('nodeToDoc').onclick = () => {
+    const b = nodeModalBlock;
+    if (!b || !lastManifest) return;
+    closeNodeModal();
+    setView('spatial');
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`.doc-blk[data-bid="${CSS.escape(b.id)}"]`);
+      if (el) centerAndFlash(el);
+    });
+  };
+
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeNodeModal(); closePaywall(); } });
 
   // ── ЛИМИТ БЕСПЛАТНОГО ТАРИФА ──
@@ -1012,6 +1030,7 @@
   // ── ГРАФ ──
   function renderGraph(graph, preserveView){
     $('legend').classList.remove('hidden');
+    $('stageEmpty').classList.add('hidden');   // есть контент — заглушку прячем всегда
     // индекс узлов текущего графа — чтобы клик по узлу работал и на 2-м, 3-м графе
     nodeById = {};
     graph.nodes.forEach(n => { nodeById[n.id] = n; });
@@ -1231,6 +1250,7 @@
   // Рендерим в #graphCanvas, поэтому зум/пан переиспользуются как есть.
   function renderSpatial(manifest){
     if (!manifest || !manifest.pages || !manifest.pages.length) return;
+    $('stageEmpty').classList.add('hidden');   // есть контент — заглушку прячем
     const byPage = {};
     manifest.blocks.forEach(b => (byPage[b.page] ||= []).push(b));
 
@@ -1321,18 +1341,41 @@
     if (!src || src === 'data:,') return null;
     const ps = pg.image_w / pg.width_pt;                 // px рендера на pt
     const [x0, top, x1, bottom] = b.bbox;
-    const bw = (x1 - x0) * ps, bh = (bottom - top) * ps; // размер блока в px картинки
-    if (bw <= 0 || bh <= 0) return null;
-    const scale = Math.min(1, 520 / bw);                 // ужимаем под ширину модалки
+    const PAD = 12;                                       // воздух вокруг, чтобы крайние буквы не резались
+    const sx = Math.max(0, x0 * ps - PAD);
+    const sy = Math.max(0, top * ps - PAD);
+    const ex = Math.min(pg.image_w, x1 * ps + PAD);
+    const ey = Math.min(pg.image_h, bottom * ps + PAD);
+    const sw = ex - sx, sh = ey - sy;                    // размер вырезки в px картинки
+    if (sw <= 0 || sh <= 0) return null;
+    const scale = Math.min(1, 600 / sw);                 // ужимаем под ширину модалки
     const d = document.createElement('div');
-    d.style.width = (bw * scale).toFixed(0) + 'px';
-    d.style.height = (bh * scale).toFixed(0) + 'px';
+    d.style.width = (sw * scale).toFixed(0) + 'px';
+    d.style.height = (sh * scale).toFixed(0) + 'px';
     d.style.backgroundImage = `url("${src}")`;
     d.style.backgroundSize = `${(pg.image_w * scale).toFixed(0)}px ${(pg.image_h * scale).toFixed(0)}px`;
-    d.style.backgroundPosition = `-${(x0 * ps * scale).toFixed(0)}px -${(top * ps * scale).toFixed(0)}px`;
+    d.style.backgroundPosition = `-${(sx * scale).toFixed(0)}px -${(sy * scale).toFixed(0)}px`;
     d.style.backgroundRepeat = 'no-repeat';
     d.style.borderRadius = '4px';
     return d;
+  }
+
+  // обратное сопоставление: узел графа → наиболее подходящий блок документа
+  // (для показа картинки-вырезки при клике по узлу и для перехода в документ).
+  function matchNodeToBlock(n){
+    if (!lastManifest || !lastManifest.blocks || !n) return null;
+    const nt = new Set(_tokens((n.name || '') + ' ' + (n.full || n.excerpt || n.snippet || '')));
+    if (!nt.size) return null;
+    let best = null, bestScore = 0;
+    for (const b of lastManifest.blocks){
+      const bt = _tokens(b.text);
+      if (!bt.length) continue;
+      let hit = 0;
+      for (const w of bt) if (nt.has(w)) hit++;
+      const score = hit / bt.length;    // доля слов блока, покрытых узлом
+      if (score > bestScore) { bestScore = score; best = b; }
+    }
+    return bestScore > 0.15 ? best : null;
   }
 
   // клик по блоку в «Документе»: найти узел → граф → развернуть → фокус → модалка
@@ -1350,9 +1393,14 @@
     });
   }
 
+  // каждый вид (граф/документ) помнит свой зум/пан — иначе, попанорамировав документ,
+  // при возврате «теряешь» граф (он оставался сдвинут в позицию документа).
+  const viewState = { graph: null, spatial: null };
+
   // переключение вида Граф/Документ
   function setView(view){
     if (view === 'spatial' && !lastManifest) return;
+    viewState[currentView] = { z: gZoom, x: gPanX, y: gPanY };   // сохранить уходящий вид
     currentView = view;
     $('vtGraph').classList.toggle('active', view === 'graph');
     $('vtDoc').classList.toggle('active', view === 'spatial');
@@ -1364,7 +1412,12 @@
     } else {
       $('graph').innerHTML = '';
       $('stageEmpty').classList.remove('hidden');
+      return;
     }
+    // восстановить сохранённый вид или дефолт (документ — сверху, граф — как обычно)
+    const st = viewState[view] || (view === 'spatial' ? { z: 0.85, x: 40, y: 30 } : { z: 1, x: 60, y: 40 });
+    gZoom = st.z; gPanX = st.x; gPanY = st.y;
+    applyGraphTransform();
   }
   $('vtGraph').onclick = () => setView('graph');
   $('vtDoc').onclick = () => setView('spatial');
@@ -1423,22 +1476,20 @@
     const card = e.target.closest('.tnode');
     if (!card) return;
     const n = nodeById[card.dataset.id];
-    if (n) openNodeModal(n);
+    if (n) openNodeModal(n, matchNodeToBlock(n));   // тот же вид модалки, что из документа
   });
 
-  // центрировать холст на карточке + вспышка рамки (общее для focusPath и прыжка
-  // из spatial-режима). Возвращает false, если карточки такого узла нет в DOM.
-  function focusNodeById(id){
-    const card = document.querySelector(`.tnode[data-id="${CSS.escape(id)}"]`);
-    if (!card) return false;
+  // центрировать холст на элементе (карточке узла ИЛИ блоке документа) + вспышка.
+  function centerAndFlash(el){
+    if (!el) return false;
     const canvas = document.getElementById('graphCanvas');
     if (canvas) {
-      // локальные (нетрансформированные) координаты карточки относительно холста —
+      // локальные (нетрансформированные) координаты элемента относительно холста —
       // transform не влияет на offsetLeft/offsetTop, поэтому проход по offsetParent даёт
       // истинную позицию в потоке документа
-      let x = 0, y = 0, node = card;
+      let x = 0, y = 0, node = el;
       while (node && node !== canvas) { x += node.offsetLeft; y += node.offsetTop; node = node.offsetParent; }
-      const cx = x + card.offsetWidth / 2, cy = y + card.offsetHeight / 2;
+      const cx = x + el.offsetWidth / 2, cy = y + el.offsetHeight / 2;
       const rect = graphEl.getBoundingClientRect();
       canvas.style.transition = 'transform .35s ease';
       gPanX = rect.width / 2 - cx * gZoom;
@@ -1446,11 +1497,15 @@
       applyGraphTransform();
       setTimeout(() => { canvas.style.transition = ''; }, 350);
     }
-    card.style.transition = 'box-shadow .15s';
-    const prevShadow = card.style.boxShadow;
-    card.style.boxShadow = '0 0 0 3px #A78BFA, 0 0 24px rgba(167,139,250,.7)';
-    setTimeout(() => { card.style.boxShadow = prevShadow; }, 1200);
+    el.style.transition = 'box-shadow .15s';
+    const prevShadow = el.style.boxShadow;
+    el.style.boxShadow = '0 0 0 3px #A78BFA, 0 0 24px rgba(167,139,250,.7)';
+    setTimeout(() => { el.style.boxShadow = prevShadow; }, 1200);
     return true;
+  }
+  // центрировать/подсветить узел графа по id (обёртка над centerAndFlash)
+  function focusNodeById(id){
+    return centerAndFlash(document.querySelector(`.tnode[data-id="${CSS.escape(id)}"]`));
   }
 
   // подсветить узел из чипа "путь к ответу": по id, затем по имени (id = имя понятия).
@@ -1490,17 +1545,13 @@
     else badge.classList.remove('show');
 
     const kpts = (a.key_points || []).map(p => `<li>${esc(p)}</li>`).join('');
-    window._lastPath = path;   // фокус по индексу — без проблем с экранированием
-    const chips = path.map((n, i) =>
-      `<span class="chip ${n.type_matched ? 'matched' : ''}" onclick="focusPath(${i})">${esc(n.name)}</span>`
-    ).join('');
+    window._lastPath = path;   // оставляем для фокуса из других мест (чипы убраны)
 
     const el = document.createElement('div'); el.className = 'msg bot';
     el.innerHTML = `<div class="answer">
       <h4>${esc(a.answer || 'Ответ готов')}</h4>
       ${a.summary ? `<div class="summary">${esc(a.summary)}</div>` : ''}
       ${kpts ? `<div class="kpts-title">Ключевое</div><ul>${kpts}</ul>` : ''}
-      ${chips ? `<div class="kpts-title">Путь к ответу</div><div class="path">${chips}</div>` : ''}
     </div>`;
     msgs.appendChild(el); scroll();
   }
