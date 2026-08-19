@@ -281,19 +281,29 @@ def _link_figures(blocks: list[dict], figures: list[dict]) -> list[dict]:
         by_page.setdefault(f["page"], []).append(f)
 
     caption_ids = set()
+
+    def _vgap(f, ct, cb):
+        ft, fb = f["bbox"][1], f["bbox"][3]
+        if fb <= ct:
+            return ct - fb          # фигура выше блока
+        if ft >= cb:
+            return ft - cb          # фигура ниже блока
+        return 0                    # пересекаются
+
     for b in blocks:
         m = _CAP_RE.match(b["text"] or "")
         if not m:
             continue
-        num = int(m.group(1))
         figs = by_page.get(b["page"], [])
         if not figs:
             continue
-        ct = b["bbox"][1]                              # верх подписи
-        above = [f for f in figs if f["bbox"][3] <= ct + 5]   # фигуры над подписью
-        cand = above or figs
-        best = min(cand, key=lambda f: abs((f["bbox"][1] + f["bbox"][3]) / 2 - ct))
-        best["number"] = num
+        ct, cb = b["bbox"][1], b["bbox"][3]
+        best = min(figs, key=lambda f: _vgap(f, ct, cb))
+        # подпись ДОЛЖНА прилегать к фигуре; иначе это ссылка-предложение
+        # («Figure 2 plots…»), а не подпись — пропускаем, останется ссылкой.
+        if _vgap(best, ct, cb) > 60:
+            continue
+        best["number"] = int(m.group(1))
         best["caption"] = (b["text"] or "").strip()[:200]
         best["caption_block"] = b["id"]
         caption_ids.add(b["id"])
