@@ -839,10 +839,11 @@
     //  - клик по узлу графа → вырезка ВСЕГО раздела (union блоков по block_ids);
     //  - нет координат (текст/старый граф) → текст узла.
     const snip = $('nodeSnippet');
+    const cw = Math.min(560, (window.innerWidth || 700) - 150);   // ширина под контейнер модалки
     let cropEl = null;
-    if (block) cropEl = blockCropEl(block);                    // кликнутый блок
-    else if (secBlocks.length) cropEl = sectionCropEl(n);      // весь раздел по block_ids
-    else if (lastManifest) { const mb = matchNodeToBlock(n); if (mb) cropEl = blockCropEl(mb); }  // фолбэк
+    if (block) cropEl = blockCropEl(block, cw);                    // кликнутый блок
+    else if (secBlocks.length) cropEl = sectionCropEl(n, cw);      // весь раздел по block_ids
+    else if (lastManifest) { const mb = matchNodeToBlock(n); if (mb) cropEl = blockCropEl(mb, cw); }  // фолбэк
     const frag = (n.full || n.snippet || '').trim();
     if (cropEl) {
       snip.textContent = '';
