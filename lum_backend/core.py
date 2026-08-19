@@ -545,6 +545,126 @@ def main_topic_fallback(graph: dict) -> str:
     return max(graph["nodes"].values(), key=lambda n: n["mentions"])["name"]
 
 
+# ─── ПЛАН 3: РАЗДЕЛЫ ИЗ БЛОКОВ (узлы несут block_ids) ─────────────────────────
+# Вместо сегментации плоского текста эвристиками — LLM группирует ГОТОВЫЕ блоки
+# (у PDF — абзацы с координатами, у текста — абзацы без координат) в дерево
+# разделов, и каждый узел несёт block_ids. Это убирает матчинг узел↔блок на фронте
+# и делает «вырез раздела» точным по построению.
+
+def split_text_into_blocks(text: str) -> list[dict]:
+    """Не-PDF ввод → блоки-абзацы (по пустым строкам / переносам), без координат."""
+    parts, cur = [], []
+    for line in (text or "").split("\n"):
+        if line.strip():
+            cur.append(line.strip())
+        elif cur:
+            parts.append(" ".join(cur)); cur = []
+    if cur:
+        parts.append(" ".join(cur))
+    # слишком длинные «абзацы» (текст без пустых строк) режем по ~600 символов
+    blocks, i = [], 0
+    for p in parts:
+        while len(p) > 800:
+            cut = p.rfind(" ", 0, 700) or 700
+            blocks.append({"id": f"b{i}", "text": p[:cut].strip()}); i += 1
+            p = p[cut:].strip()
+        if p:
+            blocks.append({"id": f"b{i}", "text": p}); i += 1
+    return blocks
+
+
+_SECTIONS_FROM_BLOCKS_SYSTEM = """Ты сегментируешь документ на его НАСТОЯЩУЮ структуру,
+используя ГОТОВЫЕ блоки текста. Блоки пронумерованы как [bN]. Сгруппируй их в иерархию
+разделов (разделы и, где нужно, подразделы).
+
+Правила:
+- заголовок раздела — короткий и осмысленный (2-6 слов);
+- отнеси КАЖДЫЙ блок ровно к одному разделу через block_ids; НЕ выдумывай id;
+- блок-заголовок клади в тот раздел, который он озаглавливает;
+- покрой ВСЕ блоки, порядок сохраняй;
+- 4-8 разделов верхнего уровня, не мельчи.
+
+Ответь ТОЛЬКО валидным JSON без markdown:
+{"root":"тема документа (2-6 слов)",
+ "children":[
+   {"title":"Раздел","block_ids":["b0","b1"],"children":[
+      {"title":"Подраздел","block_ids":["b2"]}
+   ]},
+   {"title":"Другой раздел","block_ids":["b3","b4"]}
+ ]}"""
+
+
+def build_sections_from_blocks(blocks: list[dict], in_answer_names: set[str]) -> dict | None:
+    """
+    Блоки (id+текст) → дерево разделов {nodes, edges, root}, где КАЖДЫЙ узел несёт
+    block_ids. excerpt/full выводим из текста самих блоков (не выдумывает модель).
+    Возвращает None при сбое — вызывающий откатывается на старый путь.
+    """
+    if not blocks:
+        return None
+    by_id = {b["id"]: b.get("text", "") for b in blocks}
+    listing = "\n".join(f"[{b['id']}] {by_id[b['id']][:500]}" for b in blocks)
+    raw = call_llm(
+        system=_SECTIONS_FROM_BLOCKS_SYSTEM,
+        user=f"БЛОКИ:\n{listing}",
+        model=POWER_MODEL,
+        max_tokens=2000,   # тут только заголовки + id, без цитат — короче
+    )
+    try:
+        data = parse_json_lenient(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict) or not data.get("children"):
+        return None
+
+    nodes, edges, used = [], [], set()
+
+    def uid(name: str) -> str:
+        base = (name or "?").strip() or "?"
+        key, i = base, 1
+        while key in used:
+            i += 1; key = f"{base}#{i}"
+        used.add(key)
+        return key
+
+    def block_text(ids: list) -> str:
+        return "\n".join(by_id.get(i, "") for i in ids if i in by_id).strip()
+
+    def is_ans(title: str, full: str) -> bool:
+        blob = f"{title} {full}".lower()
+        return any(nm and nm in blob for nm in in_answer_names)
+
+    def add(title: str, ntype: str, ids: list) -> str:
+        nid = uid(title)
+        valid_ids = [i for i in (ids or []) if i in by_id]
+        full = block_text(valid_ids)
+        nodes.append({
+            "id": nid, "name": (title or "").strip(), "type": ntype,
+            "block_ids": valid_ids,
+            "excerpt": full[:400], "full": full[:1500],
+            "world": "", "mentions": 1,
+            "in_answer": is_ans(title, full),
+        })
+        return nid
+
+    def walk(children, parent_id):
+        for ch in children or []:
+            if not isinstance(ch, dict) or not (ch.get("title") or "").strip():
+                continue
+            kids = ch.get("children") or []
+            ntype = "branch" if kids else "section"
+            cid = add(ch["title"], ntype, ch.get("block_ids"))
+            edges.append({"from": parent_id, "to": cid, "label": "",
+                          "in_answer": nodes[-1]["in_answer"]})
+            walk(kids, cid)
+
+    root_id = add(data.get("root") or "Документ", "branch", [])
+    walk(data.get("children"), root_id)
+    if len(nodes) <= 1:
+        return None   # модель ничего осмысленного не сгруппировала
+    return {"nodes": nodes, "edges": edges, "root": root_id}
+
+
 # ─── САБ-ЧАТ ПО ВЕТКЕ (вопрос строго по контексту одного узла) ────────────────
 
 _NODE_ANSWER_SYSTEM = """Ты — помощник, который отвечает на вопрос пользователя про раздел
@@ -684,9 +804,13 @@ def serialize_graph(graph: dict, top_ids: set[str], info: dict | None = None) ->
 
 # ─── ГЛАВНАЯ ФУНКЦИЯ ──────────────────────────────────────────────────────────
 
-def run_pipeline(text: str, query: str) -> dict:
+def run_pipeline(text: str, query: str, blocks: list[dict] | None = None) -> dict:
     """
     Полный прогон. Возвращает dict, готовый к json-ответу API.
+
+    blocks — готовые блоки {id, text} (у PDF из spatial-манифеста, с координатами
+    на фронте). Если не переданы — режем текст на блоки-абзацы. Mind-map строится
+    ИЗ блоков (узлы несут block_ids), см. build_sections_from_blocks.
 
     Ключи ответа:
       answer      — {answer, summary, key_points}
@@ -704,6 +828,9 @@ def run_pipeline(text: str, query: str) -> dict:
     # skip (см. step2) и превратится в невнятное "не удалось извлечь сущности".
     if not GEMINI_API_KEY:
         raise PipelineError("GEMINI_API_KEY не задан в переменных окружения")
+
+    # блоки: готовые (PDF) или нарезка текста (paste/txt/md) — единый фундамент
+    blocks = blocks or split_text_into_blocks(text)
 
     chunks      = step1_chunk(text)
     extracted   = step2_extract_entities(chunks)
@@ -733,9 +860,14 @@ def run_pipeline(text: str, query: str) -> dict:
     # Мягкая деградация: если шаг упал — mindmap=None, фронт покажет обычный граф.
     mindmap = None
     try:
-        sections_raw = step_document_sections(text, main_topic_fallback(graph))
-        if sections_raw:
-            mindmap = flatten_sections(sections_raw, in_answer_names)
+        # План 3: строим разделы ИЗ блоков (узлы несут block_ids). Если не вышло —
+        # откат на старую сегментацию плоского текста (совместимость).
+        mindmap = build_sections_from_blocks(blocks, in_answer_names)
+        if not mindmap:
+            sections_raw = step_document_sections(text, main_topic_fallback(graph))
+            if sections_raw:
+                mindmap = flatten_sections(sections_raw, in_answer_names)
+        if mindmap:
             section_titles = [n["name"] for n in mindmap["nodes"] if n["type"] == "section"]
             world_blurbs = _batch_world_info(section_titles)
             for n in mindmap["nodes"]:

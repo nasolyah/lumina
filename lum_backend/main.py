@@ -96,9 +96,17 @@ def require_user(cred: Optional[HTTPAuthorizationCredentials] = Depends(_bearer)
 
 # ─── СХЕМЫ ЗАПРОСА/ОТВЕТА ─────────────────────────────────────────────────────
 
+class Block(BaseModel):
+    id: str
+    text: str = ""
+
+
 class AnalyzeRequest(BaseModel):
     text: str = Field(..., min_length=1, description="Текст для анализа")
     query: str = Field(..., min_length=1, description="Вопрос пользователя")
+    # готовые блоки из spatial-манифеста (PDF): mind-map строится из них с block_ids.
+    # Не переданы — бэкенд режет текст на блоки-абзацы (paste/txt/md).
+    blocks: Optional[list[Block]] = None
 
 
 class AskNodeRequest(BaseModel):
@@ -160,8 +168,9 @@ def analyze(req: AnalyzeRequest, user: dict = Depends(require_user)):
             status_code=400,
             detail=f"Текст слишком большой ({len(req.text)} симв., максимум {MAX_TEXT_CHARS}).",
         )
+    blocks = [b.model_dump() for b in req.blocks] if req.blocks else None
     try:
-        return core.run_pipeline(text=req.text, query=req.query)
+        return core.run_pipeline(text=req.text, query=req.query, blocks=blocks)
     except core.PipelineError as e:
         # Ожидаемые ошибки пайплайна (пустой ввод, нет ключа, Gemini упал) → 400.
         # Логируем текст ошибки — он же уходит в HTTP detail, но здесь виден в логах Render.
