@@ -1304,23 +1304,50 @@
     };
   }
 
-  // ── КЛИК ПО БЛОКУ → ПРЫЖОК НА ГРАФ ──────────────────────────────────────────
+  // ── СОПОСТАВЛЕНИЕ БЛОК ↔ УЗЕЛ ────────────────────────────────────────────────
   // Блоки документа и узлы графа строятся разными пайплайнами (нет общего ID),
-  // поэтому сопоставляем по тексту: какой узел лучше всего «покрывает» слова блока.
+  // сопоставляем по тексту. Чтобы матч был точнее:
+  //  - выкидываем стоп-слова (общие слова не должны решать),
+  //  - стеммим префиксом (русские словоформы «внимание/внимания» → один токен),
+  //  - взвешиваем по редкости (IDF): совпадение «Vaswani/трансформ» важнее, чем «это».
+  const _STOP = new Set(['это','как','для','что','или','его','так','при','над','под','был','была','были','быть','этот','эта','эти','того','этом','весь','вся','все','всё','который','которая','которые','можно','нужно','если','чтобы','чтоб','также','более','менее','очень','ещё','еще','уже','кроме','между','через','изо','его','ими','нее','них','том','тем','как','что','где','когда','также','the','and','for','are','was','were','with','that','this','from','have','has','which','their','they','you','not','but','can','all','its','into','than','then','also']);
+  function _stem(w){ return w.length > 5 ? w.slice(0, 5) : w; }
   function _tokens(s){
-    return (s || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(w => w.length > 2);
+    return (s || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/)
+      .filter(w => w.length > 2 && !_STOP.has(w)).map(_stem);
   }
+  // IDF стемов по всем блокам манифеста (кэш на объекте манифеста)
+  function _idfOf(m){
+    if (!m || !m.blocks) return null;
+    if (m._idf) return m._idf;
+    const df = new Map(), N = m.blocks.length || 1;
+    for (const b of m.blocks) for (const t of new Set(_tokens(b.text))) df.set(t, (df.get(t) || 0) + 1);
+    const idf = new Map();
+    for (const [t, d] of df) idf.set(t, Math.log((N + 1) / (d + 0.5)));
+    m._idf = idf;
+    return idf;
+  }
+  // взвешенное перекрытие: сумма IDF стемов блока, встречающихся у узла
+  function _overlapScore(blockStems, nodeSet, idf){
+    let score = 0; const seen = new Set();
+    for (const t of blockStems){
+      if (seen.has(t) || !nodeSet.has(t)) continue;
+      seen.add(t);
+      score += idf ? (idf.get(t) || 1) : 1;
+    }
+    return score;
+  }
+
   function matchBlockToNode(text){
     if (!lastGraph || !lastGraph.nodes) return null;
-    const bt = new Set(_tokens(text));
-    if (!bt.size) return null;
+    const idf = _idfOf(lastManifest);
+    const bt = _tokens(text);
+    if (!bt.length) return null;
     let best = null, bestScore = 0;
     for (const n of lastGraph.nodes){
-      const nt = _tokens((n.name || '') + ' ' + (n.full || n.excerpt || n.snippet || ''));
-      if (!nt.length) continue;
-      let hit = 0;
-      for (const w of nt) if (bt.has(w)) hit++;
-      const score = hit / bt.size;   // доля слов блока, покрытых узлом
+      const nt = new Set(_tokens((n.name || '') + ' ' + (n.full || n.excerpt || n.snippet || '')));
+      if (!nt.size) continue;
+      const score = _overlapScore(bt, nt, idf);
       if (score > bestScore) { bestScore = score; best = n; }
     }
     return bestScore > 0 ? best : null;   // без совпадений совсем — не прыгаем
@@ -1363,21 +1390,21 @@
   // обратное сопоставление: узел графа → наиболее подходящий блок-АБЗАЦ документа.
   // Заголовки пропускаем (иначе «Введение»-узел матчил бы заголовок «Введение» и в
   // вырезке было бы одно слово, а не текст параграфа). Берём контент-блок с
-  // максимальным ПЕРЕКРЫТИЕМ слов (абсолютным), т.е. сам текст раздела.
+  // максимальным ВЗВЕШЕННЫМ перекрытием (редкие общие слова весомее) — сам текст раздела.
   function matchNodeToBlock(n){
     if (!lastManifest || !lastManifest.blocks || !n) return null;
+    const idf = _idfOf(lastManifest);
     const nt = new Set(_tokens((n.name || '') + ' ' + (n.full || n.excerpt || n.snippet || '')));
     if (!nt.size) return null;
-    let best = null, bestHits = 0;
+    let best = null, bestScore = 0;
     for (const b of lastManifest.blocks){
       if (b.kind === 'heading') continue;      // заголовок — не контент
       const bt = _tokens(b.text);
       if (bt.length < 3) continue;             // слишком коротко для абзаца
-      let hit = 0;
-      for (const w of bt) if (nt.has(w)) hit++;
-      if (hit > bestHits) { bestHits = hit; best = b; }
+      const score = _overlapScore(bt, nt, idf);
+      if (score > bestScore) { bestScore = score; best = b; }
     }
-    return bestHits >= 2 ? best : null;
+    return bestScore > 0 ? best : null;
   }
 
   // клик по блоку в «Документе»: найти узел → граф → развернуть → фокус → модалка
