@@ -797,7 +797,7 @@
   const TYPE_LABEL = { concept:'Концепция', method:'Метод', person:'Персона', term:'Термин', branch:'Тематическая ветка', section:'Раздел документа', answer:'Ответ (саб-чат)' };
   let nodeModalId = null;   // id узла, открытого сейчас в модалке (к нему крепится саб-чат)
 
-  function openNodeModal(n){
+  function openNodeModal(n, block){
     nodeModalId = n.id;
     $('nodeTitle').textContent = n.name || '';
     $('nodeType').textContent = TYPE_LABEL[n.type] || n.type || '';
@@ -805,12 +805,20 @@
     const desc = (n.question ? 'Вопрос: ' + n.question : (n.description || '')).trim();
     $('nodeDesc').textContent = desc;
     $('nodeDesc').style.display = desc ? '' : 'none';
-    // 1) цитата/фрагмент из загруженного текста: у нового mind-map это n.full
-    // (более полная цитата раздела), у старого fallback-графа — n.snippet
+    // 1) фрагмент источника. Если пришли кликом по блоку в «Документе» — показываем
+    // ВЫРЕЗКУ-КАРТИНКУ блока (математика цела), а не извлечённый текст (коверкается).
+    // Иначе — текст узла (n.full у mind-map, n.snippet у старого графа).
+    const snip = $('nodeSnippet');
+    const cropEl = block ? blockCropEl(block) : null;
     const frag = (n.full || n.snippet || '').trim();
-    if (frag) {
-      $('nodeSnippet').textContent = frag;
-      $('nodeSnippet').previousElementSibling.textContent = n.type === 'answer' ? 'Ответ' : 'Фрагмент источника';
+    if (cropEl) {
+      snip.textContent = '';
+      snip.appendChild(cropEl);
+      snip.previousElementSibling.textContent = 'Фрагмент источника';
+      $('nodeSnippetWrap').style.display = '';
+    } else if (frag) {
+      snip.textContent = frag;
+      snip.previousElementSibling.textContent = n.type === 'answer' ? 'Ответ' : 'Фрагмент источника';
       $('nodeSnippetWrap').style.display = '';
     } else {
       $('nodeSnippetWrap').style.display = 'none';   // нет в тексте — секцию не показываем
@@ -1304,7 +1312,31 @@
     while (p != null) { collapsed.delete(p); p = treeParent.get(p); }
   }
 
+  // Вырезка блока из УЖЕ загруженной картинки страницы (CSS-кроп, без бэкенда и
+  // без лишнего egress). Показывает фрагмент как есть — математика не коверкается.
+  function blockCropEl(b){
+    const pg = lastManifest && lastManifest.pages && lastManifest.pages[b.page];
+    if (!pg) return null;
+    const src = pg.image_url || pg.image;
+    if (!src || src === 'data:,') return null;
+    const ps = pg.image_w / pg.width_pt;                 // px рендера на pt
+    const [x0, top, x1, bottom] = b.bbox;
+    const bw = (x1 - x0) * ps, bh = (bottom - top) * ps; // размер блока в px картинки
+    if (bw <= 0 || bh <= 0) return null;
+    const scale = Math.min(1, 520 / bw);                 // ужимаем под ширину модалки
+    const d = document.createElement('div');
+    d.style.width = (bw * scale).toFixed(0) + 'px';
+    d.style.height = (bh * scale).toFixed(0) + 'px';
+    d.style.backgroundImage = `url("${src}")`;
+    d.style.backgroundSize = `${(pg.image_w * scale).toFixed(0)}px ${(pg.image_h * scale).toFixed(0)}px`;
+    d.style.backgroundPosition = `-${(x0 * ps * scale).toFixed(0)}px -${(top * ps * scale).toFixed(0)}px`;
+    d.style.backgroundRepeat = 'no-repeat';
+    d.style.borderRadius = '4px';
+    return d;
+  }
+
   // клик по блоку в «Документе»: найти узел → граф → развернуть → фокус → модалка
+  // (в модалке фрагмент показываем ВЫРЕЗКОЙ этого блока — см. openNodeModal)
   function jumpFromBlock(bid){
     const b = lastManifest && lastManifest.blocks.find(x => x.id === bid);
     if (!b) return;
@@ -1314,7 +1346,7 @@
     setView('graph');                     // рендерит lastGraph с развёрнутыми предками
     requestAnimationFrame(() => {         // ждём отрисовку DOM графа
       focusNodeById(node.id);
-      openNodeModal(node);
+      openNodeModal(node, b);             // b → фрагмент как картинка-вырезка
     });
   }
 
