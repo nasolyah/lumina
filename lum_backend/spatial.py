@@ -134,9 +134,138 @@ def _group_words_into_blocks(words: list[dict]) -> list[dict]:
     return out
 
 
+_MIN_FIG_PT = 24.0   # фигуры меньше — иконки/подчёркивания/буллеты, не фигура
+
+
+def _extract_figures(page) -> list[dict]:
+    """
+    Растровые картинки страницы (встроенные изображения) → bbox в пунктах.
+    Векторные чарты/формулы (кластеры линий/кривых) — следующий срез Этапа 2:
+    их надо ловить рендером региона, а не «чистым» извлечением (см. deferred).
+    """
+    figs = []
+    for im in page.images:
+        try:
+            x0 = float(im["x0"]); x1 = float(im["x1"])
+            top = float(im["top"]); bottom = float(im["bottom"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if (x1 - x0) < _MIN_FIG_PT or (bottom - top) < _MIN_FIG_PT:
+            continue
+        figs.append({
+            "bbox": [round(x0, 1), round(top, 1), round(x1, 1), round(bottom, 1)],
+            "kind": "image",
+        })
+    return figs
+
+
+_MAX_PRIMS = 800   # больше примитивов на странице — плотная таблица/шум, вектор не ищем
+
+
+def _extract_vector_figures(page, words) -> list[dict]:
+    """
+    Векторные фигуры (чарты/чертежи): кластеры примитивов рисования (линии, кривые,
+    прямоугольники). Формулы сюда обычно НЕ попадают — они текст (и уже покрыты
+    вырезкой блока).
+
+    Что решает ложные/пропуски:
+      - наличие КРИВОЙ — сильный сигнал чарта (принимаем даже разреженный кластер);
+      - «решётка» (много различных уровней гориз. И верт. линий) + текст в ячейках —
+        это таблица, отсеиваем;
+      - линейки-разделители во всю ширину/высоту, тонкие полоски, плотный текст.
+    """
+    pw = float(page.width); ph = float(page.height)
+    # prim: (x0, top, x1, bottom, is_curve, orient)  orient: 'h'|'v'|'o'
+    prims = []
+
+    def _add(objs, is_curve):
+        for obj in objs:
+            try:
+                x0 = float(obj["x0"]); x1 = float(obj["x1"])
+                top = float(obj["top"]); bottom = float(obj["bottom"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            w = abs(x1 - x0); h = abs(bottom - top)
+            if h < 3 and w > 0.6 * pw:   # горизонтальная линейка во всю ширину
+                continue
+            if w < 3 and h > 0.6 * ph:   # вертикальный бордюр во всю высоту
+                continue
+            orient = "h" if (h < 3 and w >= 3) else ("v" if (w < 3 and h >= 3) else "o")
+            prims.append((min(x0, x1), min(top, bottom), max(x0, x1), max(top, bottom),
+                          is_curve, orient))
+
+    _add(page.lines, False)
+    _add(page.curves, True)
+    _add(page.rects, False)
+    if not prims or len(prims) > _MAX_PRIMS:
+        return []
+
+    # кластеризация union-find по перекрытию расширенных bbox
+    PAD = 8.0
+    n = len(prims)
+    parent = list(range(n))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def overlap(a, b):
+        return not (a[2] + PAD < b[0] or b[2] + PAD < a[0]
+                    or a[3] + PAD < b[1] or b[3] + PAD < a[1])
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            if overlap(prims[i], prims[j]):
+                parent[find(i)] = find(j)
+
+    # агрегируем по кластерам: bbox, число примитивов/кривых, уровни H/V линий
+    groups = {}
+    for i in range(n):
+        r = find(i)
+        g = groups.get(r)
+        if g is None:
+            g = groups[r] = {"x0": 1e9, "top": 1e9, "x1": -1e9, "bottom": -1e9,
+                             "cnt": 0, "curves": 0, "hlev": set(), "vlev": set()}
+        p = prims[i]
+        g["x0"] = min(g["x0"], p[0]); g["top"] = min(g["top"], p[1])
+        g["x1"] = max(g["x1"], p[2]); g["bottom"] = max(g["bottom"], p[3])
+        g["cnt"] += 1
+        if p[4]:
+            g["curves"] += 1
+        if p[5] == "h":
+            g["hlev"].add(round(p[1] / 4))    # уровень с допуском ~4pt
+        elif p[5] == "v":
+            g["vlev"].add(round(p[0] / 4))
+
+    figs = []
+    for g in groups.values():
+        x0, top, x1, bottom = g["x0"], g["top"], g["x1"], g["bottom"]
+        w = x1 - x0; h = bottom - top
+        if w < 40 or h < 40:
+            continue
+        inside = sum(1 for wd in words
+                     if x0 <= (wd["x0"] + wd["x1"]) / 2 <= x1
+                     and top <= (wd["top"] + wd["bottom"]) / 2 <= bottom)
+        # «решётка» гориз.+верт. линий с текстом в ячейках → таблица, пропускаем
+        is_grid = len(g["hlev"]) >= 3 and len(g["vlev"]) >= 3
+        if is_grid and g["curves"] == 0 and inside > 6:
+            continue
+        # кривая есть → чарт/чертёж даже с малым числом примитивов; иначе нужно >=6
+        enough = (g["curves"] >= 1 and g["cnt"] >= 3) or (g["cnt"] >= 6)
+        if not enough:
+            continue
+        if inside > 25:   # много текста внутри — похоже на абзац/таблицу
+            continue
+        figs.append({"bbox": [round(x0, 1), round(top, 1), round(x1, 1), round(bottom, 1)],
+                     "kind": "drawing"})
+    return figs
+
+
 def build_manifest(pdf_bytes: bytes, image_sink=None) -> dict:
     """
-    PDF-байты → манифест {schema_version, pages[], blocks[]}.
+    PDF-байты → манифест {schema_version, pages[], blocks[], figures[]}.
 
     image_sink(page_index, webp_bytes) -> str: куда деть картинку страницы и что
     записать в pages[].image. По умолчанию — data URL (dev / без Storage). Для
@@ -144,8 +273,9 @@ def build_manifest(pdf_bytes: bytes, image_sink=None) -> dict:
     (см. storage.py). Так извлечение остаётся чистым и тестируемым локально.
     """
     sink = image_sink or _dataurl_sink
-    pages_out, blocks_out = [], []
+    pages_out, blocks_out, figures_out = [], [], []
     order = 0
+    fig_order = 0
 
     doc = pdfium.PdfDocument(pdf_bytes)
     try:
@@ -164,6 +294,11 @@ def build_manifest(pdf_bytes: bytes, image_sink=None) -> dict:
                     blocks_out.append(b)
                     order += 1
                     kept += 1
+                page_figs = _extract_figures(page) + _extract_vector_figures(page, words)
+                for f in page_figs:
+                    f.update({"id": f"f{fig_order}", "page": pi})
+                    figures_out.append(f)
+                    fig_order += 1
                 pages_out.append({
                     "index": pi,
                     "width_pt": round(float(page.width), 1),
@@ -181,6 +316,7 @@ def build_manifest(pdf_bytes: bytes, image_sink=None) -> dict:
         "schema_version": 2,
         "pages": pages_out,
         "blocks": blocks_out,
+        "figures": figures_out,
         "truncated": len(pages_out) >= MAX_PAGES,
     }
 

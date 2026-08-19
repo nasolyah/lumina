@@ -125,6 +125,20 @@
   .doc-blk.heading { border-color: rgba(167,139,250,.6);  background: rgba(167,139,250,.12); }
   .doc-blk.text:hover    { background: rgba(56,189,248,.22); }
   .doc-blk.heading:hover { background: rgba(167,139,250,.3); }
+  /* Фигуры (растровые картинки) — оверлей поверх страницы, клик = увеличить */
+  .doc-fig { position: absolute; border-radius: 6px; cursor: zoom-in;
+    border: 2px dashed rgba(52,211,153,.7); background: rgba(52,211,153,.06);
+    transition: background .12s; }
+  .doc-fig:hover { background: rgba(52,211,153,.2); }
+  .doc-fig::after { content: '🖼'; position: absolute; top: 2px; right: 4px; font-size: 12px;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+  .doc-fig.drawing::after { content: '📊'; }
+  /* Лайтбокс увеличенной фигуры */
+  #figOverlay { position: fixed; inset: 0; z-index: 350; display: none;
+    align-items: center; justify-content: center; background: rgba(5,5,15,.8); backdrop-filter: blur(4px); }
+  #figOverlay.open { display: flex; }
+  #figOverlay .fig-box { max-width: 92vw; max-height: 88vh; overflow: auto;
+    border-radius: 10px; box-shadow: 0 12px 60px rgba(0,0,0,.6); }
   /* Переключатель Граф/Документ */
   .view-toggle { position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
     z-index: 10; display: flex; gap: 2px; padding: 3px;
@@ -625,6 +639,8 @@
       <div id="fbStatus"></div>
     </div>
   </div>
+  <!-- Лайтбокс увеличенной фигуры (клик по фигуре в «Документе») -->
+  <div id="figOverlay"><div class="fig-box" id="figBox"></div></div>
   <div class="toast" id="toast"></div>
 
 <script>
@@ -926,7 +942,7 @@
     });
   };
 
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeNodeModal(); closePaywall(); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeNodeModal(); closePaywall(); $('figOverlay').classList.remove('open'); } });
 
   // ── ЛИМИТ БЕСПЛАТНОГО ТАРИФА ──
   // 5 графов ВСЕГО за время жизни аккаунта (не 5 одновременно): счётчик в БД
@@ -1253,21 +1269,28 @@
     $('stageEmpty').classList.add('hidden');   // есть контент — заглушку прячем
     const byPage = {};
     manifest.blocks.forEach(b => (byPage[b.page] ||= []).push(b));
+    const figByPage = {};
+    (manifest.figures || []).forEach(f => (figByPage[f.page] ||= []).push(f));
 
+    const box = (bbox, scale) => {
+      const [x0, top, x1, bottom] = bbox;
+      return `left:${(x0*scale).toFixed(1)}px;top:${(top*scale).toFixed(1)}px;`
+           + `width:${((x1-x0)*scale).toFixed(1)}px;height:${((bottom-top)*scale).toFixed(1)}px;`;
+    };
     const pagesHtml = manifest.pages.map(pg => {
       const scale = pg.image_w / pg.width_pt;   // pt → px рендера
-      const blks = (byPage[pg.index] || []).map(b => {
-        const [x0, top, x1, bottom] = b.bbox;
-        const st = `left:${(x0*scale).toFixed(1)}px;top:${(top*scale).toFixed(1)}px;`
-                 + `width:${((x1-x0)*scale).toFixed(1)}px;height:${((bottom-top)*scale).toFixed(1)}px;`;
-        return `<div class="doc-blk ${b.kind}" data-bid="${esc(b.id)}" style="${st}"></div>`;
-      }).join('');
+      const blks = (byPage[pg.index] || []).map(b =>
+        `<div class="doc-blk ${b.kind}" data-bid="${esc(b.id)}" style="${box(b.bbox, scale)}"></div>`
+      ).join('');
+      const figs = (figByPage[pg.index] || []).map(f =>
+        `<div class="doc-fig ${f.kind === 'drawing' ? 'drawing' : 'image'}" data-fid="${esc(f.id)}" title="${f.kind === 'drawing' ? 'Чарт/чертёж' : 'Картинка'} — нажмите, чтобы увеличить" style="${box(f.bbox, scale)}"></div>`
+      ).join('');
       // image_url — подписанный URL из Storage (заполняет hydrateSpatial);
       // fallback на image (data URL в dev-режиме без Storage).
       const src = pg.image_url || pg.image;
       return `<div class="doc-page" style="width:${pg.image_w}px;">`
            + `<img src="${src}" width="${pg.image_w}" height="${pg.image_h}" alt="стр. ${pg.index+1}">`
-           + blks + `</div>`;
+           + blks + figs + `</div>`;
     }).join('');
 
     $('graph').innerHTML = `<div id="graphCanvas">${pagesHtml}</div>`;
@@ -1296,7 +1319,7 @@
     if (!m || m.image_kind !== 'storage') return null;
     return {
       schema_version: m.schema_version, image_kind: m.image_kind, bucket: m.bucket,
-      doc_id: m.doc_id, truncated: m.truncated, blocks: m.blocks,
+      doc_id: m.doc_id, truncated: m.truncated, blocks: m.blocks, figures: m.figures || [],
       pages: m.pages.map(p => ({
         index: p.index, width_pt: p.width_pt, height_pt: p.height_pt,
         image_w: p.image_w, image_h: p.image_h, image: p.image, sparse: p.sparse,
@@ -1361,7 +1384,7 @@
 
   // Вырезка блока из УЖЕ загруженной картинки страницы (CSS-кроп, без бэкенда и
   // без лишнего egress). Показывает фрагмент как есть — математика не коверкается.
-  function blockCropEl(b){
+  function blockCropEl(b, maxW){
     const pg = lastManifest && lastManifest.pages && lastManifest.pages[b.page];
     if (!pg) return null;
     const src = pg.image_url || pg.image;
@@ -1375,7 +1398,7 @@
     const ey = Math.min(pg.image_h, bottom * ps + PAD);
     const sw = ex - sx, sh = ey - sy;                    // размер вырезки в px картинки
     if (sw <= 0 || sh <= 0) return null;
-    const scale = Math.min(1, 600 / sw);                 // ужимаем под ширину модалки
+    const scale = Math.min(1, (maxW || 600) / sw);       // ужимаем под доступную ширину
     const d = document.createElement('div');
     d.style.width = (sw * scale).toFixed(0) + 'px';
     d.style.height = (sh * scale).toFixed(0) + 'px';
@@ -1386,6 +1409,19 @@
     d.style.borderRadius = '4px';
     return d;
   }
+
+  // клик по фигуре в «Документе» → лайтбокс с увеличенной вырезкой
+  function openFigure(fid){
+    const f = lastManifest && (lastManifest.figures || []).find(x => x.id === fid);
+    if (!f) return;
+    const crop = blockCropEl(f, Math.min(window.innerWidth * 0.9, 1100));
+    if (!crop) return;
+    const box = $('figBox');
+    box.innerHTML = '';
+    box.appendChild(crop);
+    $('figOverlay').classList.add('open');
+  }
+  $('figOverlay').onclick = () => $('figOverlay').classList.remove('open');
 
   // обратное сопоставление: узел графа → наиболее подходящий блок-АБЗАЦ документа.
   // Заголовки пропускаем (иначе «Введение»-узел матчил бы заголовок «Введение» и в
@@ -1489,7 +1525,10 @@
   // если это был конец перетаскивания холста, а не настоящий клик по карточке)
   graphEl.addEventListener('click', e => {
     if (gDragMoved) { gDragMoved = false; return; }
-    // spatial: клик по текст-блоку → дословный текст в панели
+    // spatial: клик по фигуре → лайтбокс с увеличением
+    const fig = e.target.closest('.doc-fig');
+    if (fig) { openFigure(fig.dataset.fid); return; }
+    // spatial: клик по текст-блоку → прыжок на связанный узел графа
     const blk = e.target.closest('.doc-blk');
     if (blk) { jumpFromBlock(blk.dataset.bid); return; }
     // клик по тогглу → свернуть/развернуть ветку (не открываем модалку)
