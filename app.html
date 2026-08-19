@@ -133,6 +133,8 @@
   .doc-fig::after { content: '🖼'; position: absolute; top: 2px; right: 4px; font-size: 12px;
     filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
   .doc-fig.drawing::after { content: '📊'; }
+  /* Слой связей фигура↔текст (поверх страниц, клики проходят сквозь) */
+  #docLinks { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; z-index: 5; }
   /* Лайтбокс увеличенной фигуры */
   #figOverlay { position: fixed; inset: 0; z-index: 350; display: none;
     align-items: center; justify-content: center; background: rgba(5,5,15,.8); backdrop-filter: blur(4px); }
@@ -1293,9 +1295,40 @@
            + blks + figs + `</div>`;
     }).join('');
 
-    $('graph').innerHTML = `<div id="graphCanvas">${pagesHtml}</div>`;
+    $('graph').innerHTML = `<div id="graphCanvas"><svg id="docLinks"></svg>${pagesHtml}</div>`;
     gZoom = 0.85; gPanX = 40; gPanY = 30;
     applyGraphTransform();
+    drawDocLinks();   // кривые фигура↔текст (связывание, срез C)
+  }
+
+  // связи фигура↔текст на «Документе»: кривые от фигуры к абзацам, которые на неё
+  // ссылаются (Рис. N). Рисуем только в пределах одной страницы — иначе линия
+  // тянулась бы через весь документ. Слой поверх страниц, клики проходят сквозь.
+  function drawDocLinks(){
+    const canvas = document.getElementById('graphCanvas');
+    const svg = document.getElementById('docLinks');
+    if (!canvas || !svg || !lastManifest || !(lastManifest.links || []).length) { if (svg) svg.innerHTML = ''; return; }
+    const W = canvas.scrollWidth, H = canvas.scrollHeight;
+    svg.setAttribute('width', W); svg.setAttribute('height', H);
+    svg.style.width = W + 'px'; svg.style.height = H + 'px';
+    const cRect = canvas.getBoundingClientRect();
+    const z = gZoom || 1;
+    const figPage = {}; (lastManifest.figures || []).forEach(f => figPage[f.id] = f.page);
+    const blkPage = {}; (lastManifest.blocks || []).forEach(b => blkPage[b.id] = b.page);
+    const ctr = el => { const r = el.getBoundingClientRect();
+      return { x: (r.left + r.width / 2 - cRect.left) / z, y: (r.top + r.height / 2 - cRect.top) / z }; };
+    const paths = [];
+    for (const lk of lastManifest.links){
+      if (figPage[lk.figure] !== blkPage[lk.block]) continue;   // только в пределах страницы
+      const fe = canvas.querySelector(`.doc-fig[data-fid="${CSS.escape(lk.figure)}"]`);
+      const be = canvas.querySelector(`.doc-blk[data-bid="${CSS.escape(lk.block)}"]`);
+      if (!fe || !be) continue;
+      const a = ctr(fe), b = ctr(be);
+      const dy = (b.y - a.y) * 0.4;
+      const d = `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} C ${a.x.toFixed(1)} ${(a.y+dy).toFixed(1)}, ${b.x.toFixed(1)} ${(b.y-dy).toFixed(1)}, ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+      paths.push(`<path d="${d}" fill="none" stroke="#34D399" stroke-width="1.5" stroke-dasharray="5 4" opacity="0.75"/>`);
+    }
+    svg.innerHTML = paths.join('');
   }
 
   // Подготовка манифеста к показу: в режиме Storage картинки страниц — это ПУТИ,
@@ -1319,7 +1352,8 @@
     if (!m || m.image_kind !== 'storage') return null;
     return {
       schema_version: m.schema_version, image_kind: m.image_kind, bucket: m.bucket,
-      doc_id: m.doc_id, truncated: m.truncated, blocks: m.blocks, figures: m.figures || [],
+      doc_id: m.doc_id, truncated: m.truncated, blocks: m.blocks,
+      figures: m.figures || [], links: m.links || [],
       pages: m.pages.map(p => ({
         index: p.index, width_pt: p.width_pt, height_pt: p.height_pt,
         image_w: p.image_w, image_h: p.image_h, image: p.image, sparse: p.sparse,
@@ -1410,7 +1444,7 @@
     return d;
   }
 
-  // клик по фигуре в «Документе» → лайтбокс с увеличенной вырезкой
+  // клик по фигуре в «Документе» → лайтбокс с увеличенной вырезкой + подпись
   function openFigure(fid){
     const f = lastManifest && (lastManifest.figures || []).find(x => x.id === fid);
     if (!f) return;
@@ -1418,7 +1452,15 @@
     if (!crop) return;
     const box = $('figBox');
     box.innerHTML = '';
+    box.style.background = '#fff';
     box.appendChild(crop);
+    // подпись фигуры («Рис. N …»), если распозналась при связывании
+    if (f.caption) {
+      const cap = document.createElement('div');
+      cap.textContent = f.caption;
+      cap.style.cssText = 'font:13px/1.4 Inter,sans-serif;color:#334155;padding:8px 12px;background:#fff;';
+      box.appendChild(cap);
+    }
     $('figOverlay').classList.add('open');
   }
   $('figOverlay').onclick = () => $('figOverlay').classList.remove('open');

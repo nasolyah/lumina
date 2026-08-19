@@ -263,9 +263,61 @@ def _extract_vector_figures(page, words) -> list[dict]:
     return figs
 
 
+# подпись фигуры: блок, НАЧИНАЮЩИЙСЯ с «Рис 2» / «Рисунок 2» / «Figure 2» / «Fig. 2»
+_CAP_RE = re.compile(r"^\s*(?:рис(?:унок)?|fig(?:ure)?)\.?\s*(\d{1,3})\b", re.IGNORECASE)
+# ссылка на фигуру в тексте: те же формы в любом месте абзаца
+_REF_RE = re.compile(r"(?:рис(?:унок|унк\w*)?|fig(?:ure)?)\.?\s*(\d{1,3})\b", re.IGNORECASE)
+
+
+def _link_figures(blocks: list[dict], figures: list[dict]) -> list[dict]:
+    """
+    Связывает фигуры с текстом по подписям и ссылкам:
+      1) блок-подпись («Рис N …») → присваивает номер ближайшей фигуре над ним;
+      2) ссылки «см. рис N» в остальных блоках → links[] {block, figure}.
+    Мутирует figures (number/caption/caption_block), возвращает links.
+    """
+    by_page = {}
+    for f in figures:
+        by_page.setdefault(f["page"], []).append(f)
+
+    caption_ids = set()
+    for b in blocks:
+        m = _CAP_RE.match(b["text"] or "")
+        if not m:
+            continue
+        num = int(m.group(1))
+        figs = by_page.get(b["page"], [])
+        if not figs:
+            continue
+        ct = b["bbox"][1]                              # верх подписи
+        above = [f for f in figs if f["bbox"][3] <= ct + 5]   # фигуры над подписью
+        cand = above or figs
+        best = min(cand, key=lambda f: abs((f["bbox"][1] + f["bbox"][3]) / 2 - ct))
+        best["number"] = num
+        best["caption"] = (b["text"] or "").strip()[:200]
+        best["caption_block"] = b["id"]
+        caption_ids.add(b["id"])
+
+    num2fig = {}
+    for f in figures:
+        if f.get("number") is not None:
+            num2fig.setdefault(f["number"], f["id"])
+
+    links = []
+    for b in blocks:
+        if b["id"] in caption_ids:
+            continue                                   # сама подпись — не ссылка
+        nums = {int(x) for x in _REF_RE.findall(b["text"] or "")}
+        for num in nums:
+            fid = num2fig.get(num)
+            if fid:
+                links.append({"block": b["id"], "figure": fid})
+    return links
+
+
 def build_manifest(pdf_bytes: bytes, image_sink=None) -> dict:
     """
-    PDF-байты → манифест {schema_version, pages[], blocks[], figures[]}.
+    PDF-байты → манифест {schema_version, pages[], blocks[], figures[], links[]}.
 
     image_sink(page_index, webp_bytes) -> str: куда деть картинку страницы и что
     записать в pages[].image. По умолчанию — data URL (dev / без Storage). Для
@@ -312,11 +364,14 @@ def build_manifest(pdf_bytes: bytes, image_sink=None) -> dict:
     finally:
         doc.close()
 
+    links_out = _link_figures(blocks_out, figures_out)
+
     return {
         "schema_version": 2,
         "pages": pages_out,
         "blocks": blocks_out,
         "figures": figures_out,
+        "links": links_out,
         "truncated": len(pages_out) >= MAX_PAGES,
     }
 
