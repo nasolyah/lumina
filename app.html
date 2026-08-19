@@ -846,11 +846,13 @@
     const frag = (n.full || n.snippet || '').trim();
     if (cropEl) {
       snip.textContent = '';
+      snip.style.maxHeight = '52vh'; snip.style.overflowY = 'auto';   // высокий раздел — скролл
       snip.appendChild(cropEl);
       snip.previousElementSibling.textContent = 'Фрагмент источника';
       $('nodeSnippetWrap').style.display = '';
     } else if (frag) {
       snip.textContent = frag;
+      snip.style.maxHeight = ''; snip.style.overflowY = '';
       snip.previousElementSibling.textContent = n.type === 'answer' ? 'Ответ' : 'Фрагмент источника';
       $('nodeSnippetWrap').style.display = '';
     } else {
@@ -1472,18 +1474,42 @@
     if (!node || !node.block_ids || !lastManifest) return [];
     return node.block_ids.map(manifestBlock).filter(Boolean);
   }
-  // вырезка ВСЕГО раздела: union bbox блоков узла на одной странице (первого блока)
+  // вырезка ВСЕГО раздела: собираем «полосы» единой ширины. Соседние по вертикали
+  // элементы склеиваем в одну цельную полосу (не режем строки), а большие ПУСТЫЕ
+  // промежутки страницы выкидываем. Итог — как в документе, но без пустоты, ровной колонкой.
   function sectionCropEl(node, maxW){
-    const bs = nodeBlocks(node);
+    const bs = nodeBlocks(node).filter(b => b.bbox);
     if (!bs.length) return null;
     const page = bs[0].page;
-    const same = bs.filter(b => b.page === page && b.bbox);
+    const same = bs.filter(b => b.page === page);
     if (!same.length) return null;
-    const x0 = Math.min(...same.map(b => b.bbox[0]));
-    const top = Math.min(...same.map(b => b.bbox[1]));
-    const x1 = Math.max(...same.map(b => b.bbox[2]));
-    const bottom = Math.max(...same.map(b => b.bbox[3]));
-    return blockCropEl({ page, bbox: [x0, top, x1, bottom] }, maxW);
+    const top0 = Math.min(...same.map(b => b.bbox[1]));
+    const bot0 = Math.max(...same.map(b => b.bbox[3]));
+    // фигуры в вертикальном диапазоне раздела (чарт между текстом и подписью)
+    const figs = (lastManifest.figures || []).filter(f =>
+      f.page === page && f.bbox && f.bbox[3] >= top0 - 5 && f.bbox[1] <= bot0 + 5);
+    const items = [...same, ...figs].sort((a, b) => a.bbox[1] - b.bbox[1]);
+    // единая ширина колонки для всех полос
+    const X0 = Math.min(...items.map(i => i.bbox[0]));
+    const X1 = Math.max(...items.map(i => i.bbox[2]));
+    // группируем в полосы: разрыв > GAP считаем пустым промежутком и режем
+    const GAP = 28;
+    const runs = [];
+    let cur = null;
+    for (const it of items) {
+      const t = it.bbox[1], b = it.bbox[3];
+      if (cur && t - cur.bottom > GAP) { runs.push(cur); cur = null; }
+      if (!cur) cur = { top: t, bottom: b };
+      else { cur.bottom = Math.max(cur.bottom, b); }
+    }
+    if (cur) runs.push(cur);
+    const wrap = document.createElement('div');
+    wrap.style.display = 'flex'; wrap.style.flexDirection = 'column'; wrap.style.gap = '4px';
+    for (const r of runs) {
+      const crop = blockCropEl({ page, bbox: [X0, r.top, X1, r.bottom] }, maxW);
+      if (crop) wrap.appendChild(crop);
+    }
+    return wrap.children.length ? wrap : null;
   }
 
   // клик по фигуре в «Документе» → лайтбокс с увеличенной вырезкой + подпись
