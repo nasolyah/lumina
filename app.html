@@ -707,6 +707,7 @@
   let lastGraph = null;      // последний отрисованный граф/mindmap (для восстановления)
   let collapsed = new Set(); // id узлов со СВЁРНУТЫМИ детьми (сохраняется между перерисовками)
   let lastManifest = null;   // манифест spatial-режима (страницы+блоки); MVP: только в сессии
+  let ingestPromise = null;  // промис фонового ingest PDF (analyze ждёт его до сборки графа)
   let currentView = 'graph'; // 'graph' | 'spatial'
   let treeParent = new Map();// child_id → parent_id остовного дерева (для разворота предков)
   let currentUserEmail = ''; // email текущего пользователя (для обхода лимита владельцем)
@@ -761,7 +762,7 @@
       }
       currentText = data.text;
       fname.textContent = `${file.name} · ${data.pages} стр., ${data.chars.toLocaleString('ru')} символов`;
-      ingestPdf(file);   // фоном тянем spatial-манифест (не блокируем граф-поток)
+      ingestPromise = ingestPdf(file);   // фоном тянем spatial-манифест; analyze его дождётся
     } catch (err) {
       fname.textContent = 'поддерживается .txt, .md, .pdf';
       toast('Нет связи с сервером для разбора PDF: ' + API_BASE);
@@ -789,6 +790,7 @@
   // сброс spatial-состояния (новый источник/чат): прячем переключатель, назад в граф
   function resetSpatial(){
     lastManifest = null;
+    ingestPromise = null;   // новый источник — старый ingest не ждём
     currentView = 'graph';
     if (typeof viewState !== 'undefined') { viewState.graph = null; viewState.spatial = null; }
     $('viewToggle').classList.add('hidden');
@@ -1027,6 +1029,9 @@
     setAsk(false);
 
     try {
+      // ждём фоновый ingest PDF, чтобы манифест был готов до сборки графа — иначе
+      // блоки не уйдут в analyze и узлы получат несовпадающие id (см. ingestPromise)
+      if (ingestPromise) { try { await ingestPromise; } catch (_) {} }
       // PDF: шлём блоки манифеста → узлы графа придут с их block_ids (точная привязка)
       const blocks = (lastManifest && lastManifest.blocks)
         ? lastManifest.blocks.map(b => ({ id: b.id, text: b.text })) : undefined;
