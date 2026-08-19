@@ -822,19 +822,25 @@
 
   function openNodeModal(n, block){
     nodeModalId = n.id;
-    nodeModalBlock = block || null;                 // для кнопки «Открыть в документе»
-    $('nodeToDoc').style.display = block ? '' : 'none';
+    // цель для «Открыть в документе»: явный кликнутый блок, иначе первый блок раздела
+    const secBlocks = nodeBlocks(n);
+    nodeModalBlock = block || secBlocks[0] || null;
+    $('nodeToDoc').style.display = nodeModalBlock ? '' : 'none';
     $('nodeTitle').textContent = n.name || '';
     $('nodeType').textContent = TYPE_LABEL[n.type] || n.type || '';
     // у узла-ответа показываем вопрос как описание
     const desc = (n.question ? 'Вопрос: ' + n.question : (n.description || '')).trim();
     $('nodeDesc').textContent = desc;
     $('nodeDesc').style.display = desc ? '' : 'none';
-    // 1) фрагмент источника. Если пришли кликом по блоку в «Документе» — показываем
-    // ВЫРЕЗКУ-КАРТИНКУ блока (математика цела), а не извлечённый текст (коверкается).
-    // Иначе — текст узла (n.full у mind-map, n.snippet у старого графа).
+    // 1) фрагмент источника (картинка-вырезка — математика цела):
+    //  - клик по блоку в «Документе» → вырезка ЭТОГО блока;
+    //  - клик по узлу графа → вырезка ВСЕГО раздела (union блоков по block_ids);
+    //  - нет координат (текст/старый граф) → текст узла.
     const snip = $('nodeSnippet');
-    const cropEl = block ? blockCropEl(block) : null;
+    let cropEl = null;
+    if (block) cropEl = blockCropEl(block);                    // кликнутый блок
+    else if (secBlocks.length) cropEl = sectionCropEl(n);      // весь раздел по block_ids
+    else if (lastManifest) { const mb = matchNodeToBlock(n); if (mb) cropEl = blockCropEl(mb); }  // фолбэк
     const frag = (n.full || n.snippet || '').trim();
     if (cropEl) {
       snip.textContent = '';
@@ -1021,10 +1027,13 @@
     setAsk(false);
 
     try {
+      // PDF: шлём блоки манифеста → узлы графа придут с их block_ids (точная привязка)
+      const blocks = (lastManifest && lastManifest.blocks)
+        ? lastManifest.blocks.map(b => ({ id: b.id, text: b.text })) : undefined;
       const res = await fetch(API_BASE + '/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
-        body: JSON.stringify({ text: currentText, query })
+        body: JSON.stringify({ text: currentText, query, blocks })
       });
       const data = await res.json();
       thinkingEl.remove();
@@ -1448,6 +1457,30 @@
     return d;
   }
 
+  // ── ПЛАН 3: точная привязка узел↔блоки через node.block_ids ──────────────────
+  // блок манифеста по id
+  function manifestBlock(id){
+    return lastManifest && (lastManifest.blocks || []).find(b => b.id === id) || null;
+  }
+  // блоки узла (с координатами) по его block_ids
+  function nodeBlocks(node){
+    if (!node || !node.block_ids || !lastManifest) return [];
+    return node.block_ids.map(manifestBlock).filter(Boolean);
+  }
+  // вырезка ВСЕГО раздела: union bbox блоков узла на одной странице (первого блока)
+  function sectionCropEl(node, maxW){
+    const bs = nodeBlocks(node);
+    if (!bs.length) return null;
+    const page = bs[0].page;
+    const same = bs.filter(b => b.page === page && b.bbox);
+    if (!same.length) return null;
+    const x0 = Math.min(...same.map(b => b.bbox[0]));
+    const top = Math.min(...same.map(b => b.bbox[1]));
+    const x1 = Math.max(...same.map(b => b.bbox[2]));
+    const bottom = Math.max(...same.map(b => b.bbox[3]));
+    return blockCropEl({ page, bbox: [x0, top, x1, bottom] }, maxW);
+  }
+
   // клик по фигуре в «Документе» → лайтбокс с увеличенной вырезкой + подпись
   function openFigure(fid){
     const f = lastManifest && (lastManifest.figures || []).find(x => x.id === fid);
@@ -1494,7 +1527,9 @@
   function jumpFromBlock(bid){
     const b = lastManifest && lastManifest.blocks.find(x => x.id === bid);
     if (!b) return;
-    const node = matchBlockToNode(b.text);
+    // точно: узел, чьи block_ids содержат этот блок (План 3). Фолбэк — матчинг по словам.
+    const node = (lastGraph && lastGraph.nodes.find(n => (n.block_ids || []).includes(bid)))
+              || matchBlockToNode(b.text);
     if (!node) return;
     expandToNode(node.id);
     setView('graph');                     // рендерит lastGraph с развёрнутыми предками
@@ -1590,7 +1625,7 @@
     const card = e.target.closest('.tnode');
     if (!card) return;
     const n = nodeById[card.dataset.id];
-    if (n) openNodeModal(n, matchNodeToBlock(n));   // тот же вид модалки, что из документа
+    if (n) openNodeModal(n);   // без блока → вырезка ВСЕГО раздела по block_ids (см. openNodeModal)
   });
 
   // центрировать холст на элементе (карточке узла ИЛИ блоке документа) + вспышка.
