@@ -859,10 +859,7 @@
 
   function openNodeModal(n, block){
     nodeModalId = n.id;
-    // цель для «Открыть в документе»: явный кликнутый блок, иначе первый блок раздела
-    const secBlocks = nodeBlocks(n);
-    nodeModalBlock = block || secBlocks[0] || null;
-    $('nodeToDoc').style.display = nodeModalBlock ? '' : 'none';
+    const secBlocks = nodeBlocks(n);   // блоки узла (пусто у узла-ответа/старого графа)
     $('nodeTitle').textContent = n.name || '';
     $('nodeType').textContent = TYPE_LABEL[n.type] || n.type || '';
     // у узла-ответа показываем вопрос как описание
@@ -877,23 +874,35 @@
     // ширина вырезки с ЯВНЫМ отступом от границ контейнера (мерим по факту, если можем)
     const inner = snip.clientWidth || 560;
     const cw = Math.max(240, Math.min(inner - 24, (window.innerWidth || 700) - 190));
-    let cropEl = null;
-    if (block) cropEl = blockCropEl(block, cw);                    // кликнутый блок
-    else if (secBlocks.length) cropEl = sectionCropEl(n, cw);      // весь раздел по block_ids
-    else if (lastManifest) { const mb = matchNodeToBlock(n); if (mb) cropEl = blockCropEl(mb, cw); }  // фолбэк
+    const MIN = 0.82;   // одиночный блок не ужимаем мельче ~82% (читаемость таблиц/плотного)
+    let cropEl = null, targetBlock = block || secBlocks[0] || null;
+    if (block) cropEl = blockCropEl(block, cw, MIN);                   // кликнутый блок
+    else if (secBlocks.length) cropEl = sectionCropEl(n, cw);         // весь раздел по block_ids (по ширине)
+    else if (lastManifest) {                                          // фолбэк/узел-ответ → матч по тексту
+      const mb = matchNodeToBlock(n);
+      if (mb) { cropEl = blockCropEl(mb, cw, MIN); targetBlock = mb; }
+    }
+    // «Открыть в документе» ведёт к targetBlock (в т.ч. для ответа саб-чата)
+    nodeModalBlock = targetBlock;
+    $('nodeToDoc').style.display = nodeModalBlock ? '' : 'none';
     const frag = (n.full || n.snippet || '').trim();
     if (cropEl) {
       snip.textContent = '';
-      // центрируем вырезку с отступами от границ; высокий раздел — скролл
       snip.style.maxHeight = '52vh'; snip.style.overflowY = 'auto';
-      snip.style.display = 'flex'; snip.style.flexDirection = 'column'; snip.style.alignItems = 'center';
+      snip.style.display = 'flex'; snip.style.flexDirection = 'column';
+      // если вырезка ШИРЕ контейнера (плотная таблица, крупный масштаб) — прижимаем
+      // влево и включаем горизонтальный скролл; иначе центрируем.
+      const cropW = parseInt(cropEl.style.width) || 0;
+      const wide = cropW > cw;
+      snip.style.alignItems = wide ? 'flex-start' : 'center';
+      snip.style.overflowX = wide ? 'auto' : 'hidden';
       snip.appendChild(cropEl);
       snip.previousElementSibling.textContent = 'Фрагмент источника';
       $('nodeSnippetWrap').style.display = '';
     } else if (frag) {
       snip.textContent = frag;
       snip.style.maxHeight = ''; snip.style.overflowY = '';
-      snip.style.display = ''; snip.style.alignItems = '';
+      snip.style.display = ''; snip.style.alignItems = ''; snip.style.overflowX = '';
       snip.previousElementSibling.textContent = n.type === 'answer' ? 'Ответ' : 'Фрагмент источника';
       $('nodeSnippetWrap').style.display = '';
     } else {
@@ -1479,7 +1488,7 @@
 
   // Вырезка блока из УЖЕ загруженной картинки страницы (CSS-кроп, без бэкенда и
   // без лишнего egress). Показывает фрагмент как есть — математика не коверкается.
-  function blockCropEl(b, maxW){
+  function blockCropEl(b, maxW, minScale){
     const pg = lastManifest && lastManifest.pages && lastManifest.pages[b.page];
     if (!pg) return null;
     const src = pg.image_url || pg.image;
@@ -1493,7 +1502,9 @@
     const ey = Math.min(pg.image_h, bottom * ps + PAD);
     const sw = ex - sx, sh = ey - sy;                    // размер вырезки в px картинки
     if (sw <= 0 || sh <= 0) return null;
-    const scale = Math.min(1, (maxW || 600) / sw);       // ужимаем под доступную ширину
+    // ужимаем под ширину, но НЕ мельче minScale (иначе плотный контент — таблицы —
+    // становится нечитаемым; такой кроп шире контейнера → горизонтальный скролл)
+    const scale = Math.max(minScale || 0, Math.min(1, (maxW || 600) / sw));
     const d = document.createElement('div');
     d.style.width = (sw * scale).toFixed(0) + 'px';
     d.style.height = (sh * scale).toFixed(0) + 'px';
