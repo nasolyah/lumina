@@ -146,6 +146,7 @@ def health():
         "auth_enabled": _jwks_client is not None,
         "light_model": core.LIGHT_MODEL,
         "power_model": core.POWER_MODEL,
+        "embed_model": core.EMBED_MODEL,
         "chunk_size": core.CHUNK_SIZE,
         "top_k": core.TOP_K,
         # лимиты — чтобы их можно было проверить на живом сервере

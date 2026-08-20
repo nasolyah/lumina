@@ -48,6 +48,11 @@ GEMINI_URL_TMPL = "https://generativelanguage.googleapis.com/v1beta/models/{mode
 LIGHT_MODEL  = os.environ.get("LIGHT_MODEL", "gemini-flash-lite-latest")
 POWER_MODEL  = os.environ.get("POWER_MODEL", "gemini-flash-latest")
 
+# Модель эмбеддингов (настоящие семантические векторы вместо hash). Один batch-вызов
+# на все узлы + один на запрос. При сбое — откат на hash-вектор (см. embed_texts).
+EMBED_MODEL     = os.environ.get("EMBED_MODEL", "text-embedding-004")
+EMBED_URL_TMPL  = "https://generativelanguage.googleapis.com/v1beta/models/{model}:batchEmbedContents"
+
 # Потолок выходных токенов одного ответа модели.
 MAX_OUTPUT_TOKENS = int(os.environ.get("MAX_OUTPUT_TOKENS", "2048"))
 
@@ -161,7 +166,47 @@ def call_llm(system: str, user: str, model: str = POWER_MODEL, retries: int = RE
     raise PipelineError(f"Все попытки обращения к модели {model} исчерпаны")
 
 
-# ─── ВЕКТОРЫ (hash-based эмбеддинги без внешних библиотек) ────────────────────
+# ─── ЭМБЕДДИНГИ ──────────────────────────────────────────────────────────────
+
+def embed_texts(texts: list[str]) -> list[list[float]] | None:
+    """
+    Настоящие семантические эмбеддинги Gemini (batchEmbedContents) — один вызов на
+    весь список. Возвращает None при сбое/отсутствии ключа → вызывающий откатывается
+    на hash-вектор (text_to_vector), сохраняя работоспособность пайплайна.
+    """
+    if not GEMINI_API_KEY or not texts:
+        return None
+    url = EMBED_URL_TMPL.format(model=EMBED_MODEL)
+    model_path = f"models/{EMBED_MODEL}"
+    body = {"requests": [
+        {"model": model_path, "content": {"parts": [{"text": (t or " ")[:2000]}]}}
+        for t in texts
+    ]}
+    for attempt in range(RETRIES + 1):
+        try:
+            r = requests.post(url, params={"key": GEMINI_API_KEY},
+                              headers={"Content-Type": "application/json"},
+                              json=body, timeout=60)
+            if r.ok:
+                embs = (r.json().get("embeddings") or [])
+                if len(embs) == len(texts) and all(e.get("values") for e in embs):
+                    return [e["values"] for e in embs]
+                return None
+            if (r.status_code in (429, 500, 503)) and attempt < RETRIES:
+                time.sleep(4.0 + attempt * 3.0)
+                continue
+            logger.warning("embed_texts: %s %s", r.status_code, r.text[:200])
+            return None
+        except requests.exceptions.RequestException as e:
+            if attempt < RETRIES:
+                time.sleep(3.0 + attempt * 2.0)
+                continue
+            logger.warning("embed_texts: сеть — %s", e)
+            return None
+    return None
+
+
+# ─── ВЕКТОРЫ (hash-based эмбеддинги — фолбэк без внешних вызовов) ─────────────
 
 def text_to_vector(text: str, dim: int = 64) -> list[float]:
     vector = [0.0] * dim
@@ -270,14 +315,13 @@ def step3_build_graph_with_vectors(extracted: list[dict]) -> dict:
             else:
                 canonical = entity["id"]
                 name_to_id[name_norm] = canonical
-                vector = text_to_vector(entity["name"] + " " + entity.get("description", ""))
                 nodes[canonical] = {
                     "id":          canonical,
                     "name":        entity["name"],
                     "type":        entity.get("type", "concept"),
                     "description": entity.get("description", ""),
                     "mentions":    1,
-                    "vector":      vector,
+                    "vector":      None,   # заполним ниже одним batch-эмбеддингом
                 }
             id_to_canonical[entity["id"]] = canonical
 
@@ -301,6 +345,15 @@ def step3_build_graph_with_vectors(extracted: list[dict]) -> dict:
             unique_edges.append(e)
     edges = unique_edges
 
+    # эмбеддинги узлов: один batch-вызов Gemini; при сбое — hash-фолбэк (тот же метод
+    # применяем и к запросу в step5, чтобы размерности совпадали).
+    node_ids = list(nodes.keys())
+    node_texts = [f"{nodes[i]['name']} {nodes[i].get('description', '')}".strip() for i in node_ids]
+    vecs = embed_texts(node_texts)
+    real_embed = vecs is not None
+    for i, nid in enumerate(node_ids):
+        nodes[nid]["vector"] = vecs[i] if real_embed else text_to_vector(node_texts[i])
+
     for node_id, node in nodes.items():
         neighbor_ids = (
             [e["to"] for e in edges if e["from"] == node_id]
@@ -312,7 +365,7 @@ def step3_build_graph_with_vectors(extracted: list[dict]) -> dict:
             if neighbor_vectors else node["vector"]
         )
 
-    return {"nodes": nodes, "edges": edges}
+    return {"nodes": nodes, "edges": edges, "real_embed": real_embed}
 
 
 # ─── ШАГ 4: ГЛОБАЛЬНАЯ ПАМЯТЬ ─────────────────────────────────────────────────
@@ -369,7 +422,15 @@ def detect_query_intent(query: str) -> str | None:
 
 
 def step5_vector_retrieval(graph: dict, query: str) -> list[dict]:
-    query_vector = text_to_vector(query)
+    # эмбеддинг запроса ТЕМ ЖЕ методом, что и узлы (иначе размерности не совпадут):
+    # реальный, если узлы эмбеддились реально; иначе hash-фолбэк.
+    query_vector = None
+    if graph.get("real_embed"):
+        qv = embed_texts([query])
+        if qv:
+            query_vector = qv[0]
+    if query_vector is None:
+        query_vector = text_to_vector(query)
     intent_type = detect_query_intent(query)
 
     scored = []
@@ -905,5 +966,6 @@ def run_pipeline(text: str, query: str, blocks: list[dict] | None = None) -> dic
             "nodes":  len(graph["nodes"]),
             "edges":  len(graph["edges"]),
             "top_k":  len(top_nodes),
+            "real_embed": graph.get("real_embed", False),   # реальные эмбеддинги или hash-фолбэк
         },
     }
