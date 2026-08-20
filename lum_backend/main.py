@@ -101,6 +101,8 @@ def require_user(cred: Optional[HTTPAuthorizationCredentials] = Depends(_bearer)
 class Block(BaseModel):
     id: str
     text: str = ""
+    page: Optional[int] = None
+    bbox: Optional[list[float]] = None   # [x0, top, x1, bottom] в пунктах (для колонок)
 
 
 class AnalyzeRequest(BaseModel):

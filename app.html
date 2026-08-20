@@ -1086,7 +1086,7 @@
       if (ingestPromise) { try { await ingestPromise; } catch (_) {} }
       // PDF: шлём блоки манифеста → узлы графа придут с их block_ids (точная привязка)
       const blocks = (lastManifest && lastManifest.blocks)
-        ? lastManifest.blocks.map(b => ({ id: b.id, text: b.text })) : undefined;
+        ? lastManifest.blocks.map(b => ({ id: b.id, text: b.text, page: b.page, bbox: b.bbox })) : undefined;
       const res = await fetch(API_BASE + '/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
@@ -1529,44 +1529,22 @@
   // вырезка ВСЕГО раздела: собираем «полосы» единой ширины. Соседние по вертикали
   // элементы склеиваем в одну цельную полосу (не режем строки), а большие ПУСТЫЕ
   // промежутки страницы выкидываем. Итог — как в документе, но без пустоты, ровной колонкой.
-  // вырезка раздела = ЕДИНЫЙ регион (union bbox) одной картинкой. Чтобы на
-  // многоколоночной вёрстке не захватывать ЧУЖУЮ колонку (LLM порой суёт в раздел
-  // соседнюю таблицу), берём только КОЛОНКУ заголовка раздела: якорь — блок,
-  // совпадающий с названием узла; оставляем блоки с близким X-центром, чужую колонку
-  // и full-width элементы отбрасываем.
+  // вырезка раздела = ЕДИНЫЙ честный регион (union bbox блоков + фигуры в диапазоне)
+  // одной картинкой, как кусок страницы. Не пытаемся угадать «правильную» колонку —
+  // если в раздел попали чужие блоки, это дефект ГРУППИРОВКИ (лечится на бэке), а не
+  // вырезки. Показываем ровно то, что в разделе.
   function sectionCropEl(node, maxW){
     const bs = nodeBlocks(node).filter(b => b.bbox);
     if (!bs.length) return null;
     const page = bs[0].page;
-    const pg = lastManifest.pages[page];
-    let same = bs.filter(b => b.page === page);
+    const same = bs.filter(b => b.page === page);
     if (!same.length) return null;
-
-    const pw = (pg && pg.width_pt) || Math.max(...same.map(b => b.bbox[2]));
-    const nt = new Set(_tokens(node.name || ''));
-    let anchor = null, best = 0;
-    for (const b of same) {
-      let h = 0; for (const w of _tokens(b.text)) if (nt.has(w)) h++;
-      if (h > best) { best = h; anchor = b; }
-    }
-    if (anchor && nt.size) {
-      const ac = (anchor.bbox[0] + anchor.bbox[2]) / 2;   // X-центр колонки заголовка
-      const col = same.filter(b => {
-        const w = b.bbox[2] - b.bbox[0];
-        if (w > pw * 0.55) return false;                  // full-width (общий заголовок/подпись) — не тянем
-        return Math.abs((b.bbox[0] + b.bbox[2]) / 2 - ac) < pw * 0.30;
-      });
-      if (col.length) same = col;                         // сузили до колонки якоря
-    }
-
     let x0 = Math.min(...same.map(b => b.bbox[0]));
     let top = Math.min(...same.map(b => b.bbox[1]));
     let x1 = Math.max(...same.map(b => b.bbox[2]));
     let bottom = Math.max(...same.map(b => b.bbox[3]));
-    // фигуры в диапазоне раздела И той же колонки — расширяют регион (чарт/схема)
     (lastManifest.figures || []).forEach(f => {
-      if (f.page === page && f.bbox && f.bbox[3] >= top - 5 && f.bbox[1] <= bottom + 5
-          && f.bbox[0] >= x0 - pw * 0.1 && f.bbox[2] <= x1 + pw * 0.1) {
+      if (f.page === page && f.bbox && f.bbox[3] >= top - 5 && f.bbox[1] <= bottom + 5) {
         x0 = Math.min(x0, f.bbox[0]); top = Math.min(top, f.bbox[1]);
         x1 = Math.max(x1, f.bbox[2]); bottom = Math.max(bottom, f.bbox[3]);
       }

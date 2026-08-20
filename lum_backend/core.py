@@ -647,7 +647,10 @@ _SECTIONS_FROM_BLOCKS_SYSTEM = """Ты сегментируешь докумен
 - НЕ смешивай в одном разделе РАЗНЫЕ таблицы/факультеты/подтемы: если это отдельная
   таблица или блок с собственным заголовком (напр. «Faculty of Architecture» и
   «HKU Business School») — это ОТДЕЛЬНЫЕ разделы, даже если они рядом на странице
-  (многоколоночная вёрстка) или под общей рубрикой.
+  (многоколоночная вёрстка) или под общей рубрикой;
+- у блоков указана позиция «@стрN xM yK». Блоки с СИЛЬНО разным x на одной странице —
+  это РАЗНЫЕ КОЛОНКИ (соседние таблицы); НЕ клади их в один раздел. Внутри раздела
+  x должен быть примерно одинаковым (одна колонка).
 
 Ответь ТОЛЬКО валидным JSON без markdown:
 {"root":"тема документа (2-6 слов)",
@@ -668,7 +671,16 @@ def build_sections_from_blocks(blocks: list[dict], in_answer_names: set[str]) ->
     if not blocks:
         return None
     by_id = {b["id"]: b.get("text", "") for b in blocks}
-    listing = "\n".join(f"[{b['id']}] {by_id[b['id']][:500]}" for b in blocks)
+
+    # позиция блока (страница, x, y) — даёт модели понять КОЛОНКИ и вёрстку, чтобы не
+    # объединять соседние таблицы. Есть только у PDF-блоков (у текста координат нет).
+    def _pos(b):
+        bb = b.get("bbox")
+        if not bb or len(bb) < 2:
+            return ""
+        return f" @стр{(b.get('page') or 0) + 1} x{int(bb[0])} y{int(bb[1])}"
+
+    listing = "\n".join(f"[{b['id']}]{_pos(b)} {by_id[b['id']][:400]}" for b in blocks)
     raw = call_llm(
         system=_SECTIONS_FROM_BLOCKS_SYSTEM,
         user=f"БЛОКИ:\n{listing}",
