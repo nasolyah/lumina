@@ -15,6 +15,8 @@ Lum / Lumina — FastAPI-обёртка над GraphRAG пайплайном.
 import io
 import os
 import uuid
+import time
+import threading
 import logging
 import requests
 from typing import Optional
@@ -307,13 +309,47 @@ async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(require
     return {"text": text, "chars": len(text), "pages": pages}
 
 
+# ─── ASYNC INGEST (job + polling) ─────────────────────────────────────────────
+# Рендер страниц PDF синхронно в одном запросе на больших файлах упирался в таймаут
+# Render. Теперь /api/ingest сразу отдаёт job_id, рендер идёт в фоновом потоке, а
+# фронт поллит /api/ingest/{job_id}. ВАЖНО: стор в памяти процесса — рассчитан на
+# ОДИН воркер uvicorn (по умолчанию так). Для нескольких воркеров нужен общий стор.
+_INGEST_JOBS: dict = {}            # job_id → {status, manifest, error, user, ts}
+_INGEST_TTL = 900                  # держим готовый результат до 15 мин
+
+
+def _prune_ingest_jobs():
+    now = time.time()
+    for jid in [k for k, v in list(_INGEST_JOBS.items()) if now - v["ts"] > _INGEST_TTL]:
+        _INGEST_JOBS.pop(jid, None)
+
+
+def _run_ingest(job_id: str, raw: bytes, sink, doc_id: str, image_kind: str, bucket):
+    """Фоновая сборка манифеста; результат/ошибка кладётся в _INGEST_JOBS[job_id]."""
+    job = _INGEST_JOBS.get(job_id)
+    if job is None:
+        return
+    try:
+        import spatial
+        manifest = spatial.build_manifest(raw, image_sink=sink)
+        if not manifest["pages"]:
+            job.update(status="error", error="PDF без страниц или нечитаемый.", ts=time.time())
+            return
+        manifest["doc_id"] = doc_id
+        manifest["image_kind"] = image_kind
+        manifest["bucket"] = bucket
+        job.update(status="done", manifest=manifest, ts=time.time())
+    except Exception as e:
+        logger.exception("ingest job: не удалось построить манифест")
+        job.update(status="error", error=f"Не удалось разобрать PDF: {type(e).__name__}", ts=time.time())
+
+
 @app.post("/api/ingest")
 async def ingest_pdf(file: UploadFile = File(...), user: dict = Depends(require_user)):
     """
-    Spatial-режим (Этап 1): PDF → манифест документа {schema_version, pages, blocks}.
-    Страницы рендерятся с сохранением вёрстки, текст-блоки идут с координатами и
-    ДОСЛОВНО. Импорт spatial ленивый — если зависимости (pdfplumber/pypdfium2) ещё
-    не установлены на сервере, падает только этот эндпоинт, а не всё приложение.
+    Spatial-режим: PDF → фоновая сборка манифеста. Возвращает {job_id, status} сразу;
+    фронт поллит /api/ingest/{job_id}. Импорт spatial ленивый — без зависимостей
+    падает только этот эндпоинт, а не всё приложение.
     """
     filename = (file.filename or "").lower()
     is_pdf = filename.endswith(".pdf") or file.content_type == "application/pdf"
@@ -328,7 +364,7 @@ async def ingest_pdf(file: UploadFile = File(...), user: dict = Depends(require_
         raise HTTPException(status_code=400, detail=f"Файл слишком большой (макс. {mb} МБ).")
 
     try:
-        import spatial
+        import spatial  # noqa: F401 — проверяем наличие зависимостей до запуска задачи
     except ImportError as e:
         logger.error("ingest: зависимости spatial не установлены: %s", e)
         raise HTTPException(status_code=501, detail="Spatial-режим недоступен на сервере.")
@@ -339,22 +375,34 @@ async def ingest_pdf(file: UploadFile = File(...), user: dict = Depends(require_
     doc_id = uuid.uuid4().hex
     sink = None
     image_kind = "dataurl"
+    bucket = None
     if storage.is_configured():
         sink = storage.make_sink(f"{user.get('sub')}/{doc_id}")
         image_kind = "storage"
+        bucket = storage.BUCKET
 
-    try:
-        manifest = spatial.build_manifest(raw, image_sink=sink)
-    except Exception as e:
-        logger.exception("ingest: не удалось построить манифест")
-        raise HTTPException(status_code=400, detail=f"Не удалось разобрать PDF: {type(e).__name__}")
+    _prune_ingest_jobs()
+    job_id = uuid.uuid4().hex
+    _INGEST_JOBS[job_id] = {"status": "processing", "manifest": None,
+                            "error": None, "user": user.get("sub"), "ts": time.time()}
+    threading.Thread(target=_run_ingest,
+                     args=(job_id, raw, sink, doc_id, image_kind, bucket),
+                     daemon=True).start()
+    return {"job_id": job_id, "status": "processing"}
 
-    if not manifest["pages"]:
-        raise HTTPException(status_code=400, detail="PDF без страниц или нечитаемый.")
 
-    # doc_id + image_kind нужны фронту: при 'storage' pages[].image = путь в бакете
-    # (подписать через supabase-js), при 'dataurl' — сама картинка.
-    manifest["doc_id"] = doc_id
-    manifest["image_kind"] = image_kind
-    manifest["bucket"] = storage.BUCKET if image_kind == "storage" else None
+@app.get("/api/ingest/{job_id}")
+def ingest_status(job_id: str, user: dict = Depends(require_user)):
+    """Статус фоновой задачи: {status:'processing'} | манифест (готово) | 400 (ошибка)."""
+    job = _INGEST_JOBS.get(job_id)
+    if not job or job["user"] != user.get("sub"):
+        raise HTTPException(status_code=404, detail="Задача не найдена.")
+    if job["status"] == "processing":
+        return {"status": "processing"}
+    if job["status"] == "error":
+        _INGEST_JOBS.pop(job_id, None)
+        raise HTTPException(status_code=400, detail=job.get("error") or "Ошибка разбора PDF.")
+    # done — отдаём манифест и освобождаем память
+    manifest = job.get("manifest")
+    _INGEST_JOBS.pop(job_id, None)
     return manifest

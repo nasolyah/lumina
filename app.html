@@ -777,10 +777,28 @@
     try {
       const fd = new FormData();
       fd.append('file', file);
+      // async-ingest: получаем job_id, затем поллим статус (рендер идёт фоном на бэке —
+      // не упирается в таймаут запроса на больших PDF).
       const res = await fetch(API_BASE + '/api/ingest', { method: 'POST', headers: await authHeader(), body: fd });
       if (!res.ok) return;   // spatial недоступен/ошибка — тихо остаёмся в граф-режиме
-      lastManifest = await res.json();
-      if (lastManifest && lastManifest.pages && lastManifest.pages.length) {
+      const start = await res.json();
+      const jobId = start && start.job_id;
+      if (!jobId) return;
+      const hdr = await authHeader();
+      let manifest = null;
+      for (let i = 0; i < 240; i++) {                 // до ~4 мин ожидания
+        await new Promise(r => setTimeout(r, 1000));
+        const s = await fetch(API_BASE + '/api/ingest/' + jobId, { headers: hdr });
+        if (s.status === 400 || s.status === 404) return;   // ошибка/задача пропала
+        if (!s.ok) continue;
+        const data = await s.json();
+        if (data && data.status === 'processing') continue;  // ещё рендерит
+        manifest = data;                              // готово — это манифест
+        break;
+      }
+      if (!manifest) return;
+      lastManifest = manifest;
+      if (lastManifest.pages && lastManifest.pages.length) {
         await hydrateSpatial(lastManifest);   // подписать URL (Storage) до показа
         $('viewToggle').classList.remove('hidden');
       }
