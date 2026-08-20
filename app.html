@@ -586,7 +586,7 @@
 
   <!-- Модалка узла: описание + фрагмент источника (по клику на блок графа) -->
   <div class="overlay" id="nodeOverlay">
-    <div class="modal" style="position:relative; max-width:660px;">
+    <div class="modal" style="position:relative; max-width:860px;">
       <button id="nodeClose" aria-label="Закрыть" title="Закрыть"
         style="position:absolute;top:12px;right:14px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:#94A3B8;font-size:20px;line-height:1;cursor:pointer;border-radius:8px;">✕</button>
       <h2 id="nodeTitle" style="margin-right:28px;"></h2>
@@ -597,6 +597,7 @@
       <div id="nodeSnippetWrap" style="margin-top:16px;">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7C6FF0;margin-bottom:6px;">Фрагмент источника</div>
         <div id="nodeSnippet" style="background:rgba(20,20,51,0.6);border-left:3px solid #7C6FF0;border-radius:6px;padding:12px 14px;color:#E2E8F0;font-size:13.5px;line-height:1.55;white-space:pre-wrap;"></div>
+        <div id="nodeSnippetHint" style="display:none;font-size:11px;color:#94A3B8;margin-top:6px;">🔍 Нажмите на фрагмент, чтобы увеличить · можно прокрутить</div>
       </div>
       <div id="nodeWorldWrap" style="margin-top:14px;">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#22D3EE;margin-bottom:6px;">Кратко о понятии</div>
@@ -856,6 +857,7 @@
   const TYPE_LABEL = { concept:'Концепция', method:'Метод', person:'Персона', term:'Термин', branch:'Тематическая ветка', section:'Раздел документа', answer:'Ответ (саб-чат)' };
   let nodeModalId = null;   // id узла, открытого сейчас в модалке (к нему крепится саб-чат)
   let nodeModalBlock = null;// блок документа, связанный с открытым узлом (для перехода в документ)
+  let modalCropSource = null;// источник вырезки в модалке (для увеличения по клику): {block}|{section}
 
   function openNodeModal(n, block){
     nodeModalId = n.id;
@@ -871,16 +873,16 @@
     //  - клик по узлу графа → вырезка ВСЕГО раздела (union блоков по block_ids);
     //  - нет координат (текст/старый граф) → текст узла.
     const snip = $('nodeSnippet');
-    // ширина вырезки с ЯВНЫМ отступом от границ контейнера (мерим по факту, если можем)
-    const inner = snip.clientWidth || 560;
-    const cw = Math.max(240, Math.min(inner - 24, (window.innerWidth || 700) - 190));
-    const MIN = 0.82;   // одиночный блок не ужимаем мельче ~82% (читаемость таблиц/плотного)
+    // ширина вырезки под ШИРОКУЮ модалку (max-width 860). Контейнер при построении
+    // ещё скрыт (clientWidth=0), поэтому считаем от ширины модалки, а не мерим.
+    const cw = Math.max(240, Math.min(760, (window.innerWidth || 900) - 130));
     let cropEl = null, targetBlock = block || secBlocks[0] || null;
-    if (block) cropEl = blockCropEl(block, cw, MIN);                   // кликнутый блок
-    else if (secBlocks.length) cropEl = sectionCropEl(n, cw);         // весь раздел по block_ids (по ширине)
+    modalCropSource = null;
+    if (block) { cropEl = blockCropEl(block, cw); modalCropSource = { block: block }; }         // кликнутый блок
+    else if (secBlocks.length) { cropEl = sectionCropEl(n, cw); modalCropSource = { section: n }; }  // раздел
     else if (lastManifest) {                                          // фолбэк/узел-ответ → матч по тексту
       const mb = matchNodeToBlock(n);
-      if (mb) { cropEl = blockCropEl(mb, cw, MIN); targetBlock = mb; }
+      if (mb) { cropEl = blockCropEl(mb, cw); targetBlock = mb; modalCropSource = { block: mb }; }
     }
     // «Открыть в документе» ведёт к targetBlock (в т.ч. для ответа саб-чата)
     nodeModalBlock = targetBlock;
@@ -888,21 +890,19 @@
     const frag = (n.full || n.snippet || '').trim();
     if (cropEl) {
       snip.textContent = '';
-      snip.style.maxHeight = '52vh'; snip.style.overflowY = 'auto';
-      snip.style.display = 'flex'; snip.style.flexDirection = 'column';
-      // если вырезка ШИРЕ контейнера (плотная таблица, крупный масштаб) — прижимаем
-      // влево и включаем горизонтальный скролл; иначе центрируем.
-      const cropW = parseInt(cropEl.style.width) || 0;
-      const wide = cropW > cw;
-      snip.style.alignItems = wide ? 'flex-start' : 'center';
-      snip.style.overflowX = wide ? 'auto' : 'hidden';
+      snip.style.maxHeight = '52vh'; snip.style.overflowY = 'auto'; snip.style.overflowX = 'hidden';
+      snip.style.display = 'flex'; snip.style.flexDirection = 'column'; snip.style.alignItems = 'center';
+      cropEl.style.cursor = 'zoom-in';                    // клик → увеличить (лайтбокс)
+      cropEl.onclick = openCropZoom;
       snip.appendChild(cropEl);
       snip.previousElementSibling.textContent = 'Фрагмент источника';
+      $('nodeSnippetHint').style.display = '';            // подсказка: можно увеличить/прокрутить
       $('nodeSnippetWrap').style.display = '';
     } else if (frag) {
       snip.textContent = frag;
       snip.style.maxHeight = ''; snip.style.overflowY = '';
       snip.style.display = ''; snip.style.alignItems = ''; snip.style.overflowX = '';
+      $('nodeSnippetHint').style.display = 'none';
       snip.previousElementSibling.textContent = n.type === 'answer' ? 'Ответ' : 'Фрагмент источника';
       $('nodeSnippetWrap').style.display = '';
     } else {
@@ -1601,7 +1601,23 @@
     }
     $('figOverlay').classList.add('open');
   }
-  $('figOverlay').onclick = () => $('figOverlay').classList.remove('open');
+  // закрываем лайтбокс только по клику на фон (не на содержимое) — чтобы увеличенную
+  // вырезку/фигуру можно было прокручивать, не закрывая
+  $('figOverlay').onclick = (e) => { if (e.target === $('figOverlay')) $('figOverlay').classList.remove('open'); };
+
+  // увеличить вырезку из модалки узла в лайтбокс (крупно + скролл)
+  function openCropZoom(){
+    if (!modalCropSource) return;
+    const big = Math.min((window.innerWidth || 900) * 0.92, 1500);
+    const el = modalCropSource.section
+      ? sectionCropEl(modalCropSource.section, big)
+      : blockCropEl(modalCropSource.block, big);
+    if (!el) return;
+    const box = $('figBox');
+    box.innerHTML = ''; box.style.background = '#fff';
+    box.appendChild(el);
+    $('figOverlay').classList.add('open');
+  }
 
   // обратное сопоставление: узел графа → наиболее подходящий блок-АБЗАЦ документа.
   // Заголовки пропускаем (иначе «Введение»-узел матчил бы заголовок «Введение» и в
