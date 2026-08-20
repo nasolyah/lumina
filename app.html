@@ -305,6 +305,18 @@
   .drop:hover, .drop.dragover { background: rgba(108,99,255,0.06); border-color: var(--accent); color: var(--text); }
   .drop .big { font-size: 32px; }
   .drop .fname { color: var(--glow); font-size: 13px; font-family: 'JetBrains Mono', monospace; }
+  /* Состояние загрузки: спиннер вместо ↥, подсветка рамки и крупный яркий текст */
+  .drop .spinner { display: none; width: 38px; height: 38px; border-radius: 50%;
+    border: 3px solid rgba(124,111,240,.25); border-top-color: var(--accent);
+    animation: dropspin .8s linear infinite; }
+  @keyframes dropspin { to { transform: rotate(360deg); } }
+  @keyframes droppulse { 0%,100% { border-color: var(--accent); } 50% { border-color: rgba(124,111,240,.45); } }
+  .drop.loading { cursor: default; background: rgba(108,99,255,0.08);
+    border-color: var(--accent); animation: droppulse 1.4s ease-in-out infinite; }
+  .drop.loading .big { display: none; }
+  .drop.loading .spinner { display: block; }
+  .drop.loading .drop-hint { display: none; }
+  .drop.loading .fname { font-size: 15px; font-weight: 600; color: #c4b5fd; font-family: 'Inter', sans-serif; }
   .hidden { display: none !important; }
   .modal .actions { display: flex; gap: 10px; margin-top: 20px; }
   .modal .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
@@ -558,7 +570,8 @@
       <div id="pane-file" class="hidden">
         <div class="drop" id="drop">
           <div class="big">↥</div>
-          <div>Перетащите файл сюда или нажмите, чтобы выбрать</div>
+          <div class="spinner"></div>
+          <div class="drop-hint">Перетащите файл сюда или нажмите, чтобы выбрать</div>
           <div class="fname" id="fname">поддерживается .txt, .md, .pdf</div>
           <input type="file" id="fileInput" accept=".txt,.md,.pdf,text/plain,application/pdf" class="hidden">
         </div>
@@ -748,7 +761,8 @@
   // PDF парсим на бэкенде: шлём файл в /api/extract, получаем чистый текст.
   async function uploadPdf(file){
     const fname = $('fname');
-    fname.textContent = file.name + ' · разбираю на бэкенде…';
+    $('drop').classList.add('loading');                 // спиннер + подсветка
+    fname.textContent = `Разбираю «${file.name}»…`;
     try {
       const fd = new FormData();
       fd.append('file', file);
@@ -756,14 +770,17 @@
       const data = await res.json();
       if (!res.ok) {
         if (res.status === 401) showGate('Сессия истекла — войдите снова.');
+        $('drop').classList.remove('loading');
         fname.textContent = 'поддерживается .txt, .md, .pdf';
         toast(data.detail || 'Не удалось разобрать PDF.');
         return;
       }
       currentText = data.text;
-      fname.textContent = `${file.name} · ${data.pages} стр., ${data.chars.toLocaleString('ru')} символов`;
+      $('drop').classList.remove('loading');
+      fname.textContent = `✓ ${file.name} · ${data.pages} стр., ${data.chars.toLocaleString('ru')} символов`;
       ingestPromise = ingestPdf(file);   // фоном тянем spatial-манифест; analyze его дождётся
     } catch (err) {
+      $('drop').classList.remove('loading');
       fname.textContent = 'поддерживается .txt, .md, .pdf';
       toast('Нет связи с сервером для разбора PDF: ' + API_BASE);
     }
