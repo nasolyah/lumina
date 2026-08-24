@@ -483,24 +483,97 @@ def step6_reason_and_generate(memory: str, top_nodes: list[dict], graph: dict, q
         return [{"type": "error", "title": "Ошибка парсинга", "description": raw, "connections": []}]
 
 
-def step6_generate_answer(memory: str, top_nodes: list[dict], query: str) -> dict:
+def step6_generate_answer(memory: str, top_nodes: list[dict], query: str,
+                          sources: list[dict] | None = None) -> dict:
     nodes_text = "\n".join(f"- {n['name']} ({n['type']}): {n['description']}" for n in top_nodes)
+    # ФРАГМЕНТЫ ИСТОЧНИКА — дословный текст релевантных разделов (passage-RAG).
+    # Ключевой антидот против «в тексте нет информации», когда информация ЕСТЬ:
+    # сущностный граф — сжатие с потерями (таблицы/списки туда часто не попадают),
+    # а разделы покрывают документ целиком. Модель отвечает В ПЕРВУЮ очередь по ним.
+    sources_text = "\n\n".join(
+        f"[{s.get('title') or 'раздел'}]\n{s.get('text','')}" for s in (sources or []) if s.get("text")
+    )
     raw = call_llm(
-        system="""Ты — преподаватель, который объясняет студенту научный текст просто и понятно.
+        system="""Ты — преподаватель, который объясняет студенту документ просто и понятно.
+ГЛАВНОЕ ПРАВИЛО: отвечай В ПЕРВУЮ ОЧЕРЕДЬ по «ФРАГМЕНТАМ ИСТОЧНИКА» — это дословный
+текст документа (в т.ч. таблицы, списки требований, числа). «ТОП-УЗЛЫ» и «ПАМЯТЬ» —
+лишь вспомогательный контекст, они неполны.
+- Если ответ есть во ФРАГМЕНТАХ — дай его конкретно (приведи нужные числа/пункты из таблицы).
+- Говори «в документе этого нет» ТОЛЬКО если реально не нашёл ни во фрагментах, ни в узлах.
+  Не отказывай, если данные есть во фрагментах. Ничего не выдумывай сверх источника.
 Ответь строго валидным JSON без markdown.
 {
-  "answer": "краткий ответ на вопрос",
-  "summary": "одно-два предложения, в которых поясняется, как связаны ключевые понятия",
+  "answer": "краткий конкретный ответ на вопрос",
+  "summary": "одно-два предложения, поясняющие суть/связи",
   "key_points": ["важный факт 1", "важный факт 2", "важный факт 3"]
 }
 """,
-        user=f"ГЛОБАЛЬНАЯ ПАМЯТЬ:\n{memory}\n\nТОП-УЗЛЫ:\n{nodes_text}\n\nЗАПРОС: {query}",
+        user=f"ГЛОБАЛЬНАЯ ПАМЯТЬ:\n{memory}\n\nФРАГМЕНТЫ ИСТОЧНИКА (дословно):\n{sources_text or '(нет)'}\n\nТОП-УЗЛЫ:\n{nodes_text}\n\nЗАПРОС: {query}",
         model=POWER_MODEL,
     )
     try:
         return parse_json_lenient(raw)
     except json.JSONDecodeError:
         return {"answer": raw.strip(), "summary": "", "key_points": []}
+
+
+def _embed_passages(texts: list[str], real_embed: bool) -> list[list[float]]:
+    """Эмбеддит тексты ТЕМ ЖЕ методом, что и узлы графа (реальный или hash-фолбэк),
+    иначе размерности векторов не совпадут при косинусе с запросом."""
+    if real_embed:
+        vs = embed_texts(texts)
+        if vs:
+            return vs
+    return [text_to_vector(t) for t in texts]
+
+
+def build_passages(mindmap: dict | None, real_embed: bool) -> list[dict]:
+    """Дословные разделы документа + их эмбеддинги — материал для passage-RAG.
+
+    Берём узлы mind-map (реальная структура из блоков): у каждого есть full/excerpt
+    (цитата) и block_ids. В отличие от сущностного графа, разделы покрывают документ
+    целиком (таблицы, списки требований), поэтому ответ можно заземлить на них.
+    """
+    if not mindmap or not mindmap.get("nodes"):
+        return []
+    items = []
+    for n in mindmap["nodes"]:
+        txt = (n.get("full") or n.get("excerpt") or "").strip()
+        if not txt:
+            continue
+        items.append({
+            "title": (n.get("name") or "").strip(),
+            "text": txt[:1200],
+            "block_ids": n.get("block_ids", []),
+        })
+    if not items:
+        return []
+    vecs = _embed_passages([f"{it['title']}\n{it['text']}" for it in items], real_embed)
+    for it, v in zip(items, vecs):
+        # округляем — вектор уезжает на фронт и обратно (graph_state), режем размер payload
+        it["vector"] = [round(x, 5) for x in v]
+    return items
+
+
+def retrieve_passages(passages: list[dict], query: str, real_embed: bool, k: int = 4) -> list[dict]:
+    """Топ-k дословных разделов по близости к запросу — их текст пойдёт в step6."""
+    if not passages:
+        return []
+    qv = None
+    if real_embed:
+        e = embed_texts([query])
+        if e:
+            qv = e[0]
+    if qv is None:
+        qv = text_to_vector(query)
+    scored = []
+    for p in passages:
+        v = p.get("vector")
+        if not v:
+            continue
+        scored.append((cosine_similarity(qv, v), p))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [p for _, p in scored[:k]]
 
 
 # ─── ШАГ 7: MIND-MAP (реальная структура документа) ───────────────────────────
@@ -881,7 +954,7 @@ def serialize_graph(graph: dict, top_ids: set[str], info: dict | None = None) ->
 
 # ─── ГЛАВНАЯ ФУНКЦИЯ ──────────────────────────────────────────────────────────
 
-def _graph_state(graph: dict, memory: str) -> dict:
+def _graph_state(graph: dict, memory: str, passages: list[dict] | None = None) -> dict:
     """Компактный «слепок» концепт-графа для повторных вопросов (RAG без пересборки).
 
     Кладём только то, что нужно для step5 (векторный поиск) + step6 (ответ):
@@ -904,6 +977,9 @@ def _graph_state(graph: dict, memory: str) -> dict:
         "edges":      graph["edges"],
         "memory":     memory,
         "real_embed": graph.get("real_embed", False),
+        # дословные разделы + их эмбеддинги → step6 заземляется на реальный текст,
+        # а не только на сжатый сущностный граф (см. build_passages)
+        "passages":   passages or [],
     }
 
 
@@ -929,10 +1005,13 @@ def answer_from_state(state: dict, query: str) -> dict:
         "edges":      (state or {}).get("edges") or [],
         "real_embed": (state or {}).get("real_embed", False),
     }
-    memory = (state or {}).get("memory", "")
+    memory   = (state or {}).get("memory", "")
+    passages = (state or {}).get("passages") or []
 
     top_nodes   = step5_vector_retrieval(graph, query)
-    answer_data = step6_generate_answer(memory, top_nodes, query)
+    # заземляем ответ на дословные разделы (passage-RAG), а не только на сущности
+    sources     = retrieve_passages(passages, query, graph["real_embed"])
+    answer_data = step6_generate_answer(memory, top_nodes, query, sources)
 
     top_ids = {n["id"] for n in top_nodes}
     query_intent = top_nodes[0].get("query_intent") if top_nodes else None
@@ -995,7 +1074,6 @@ def run_pipeline(text: str, query: str, blocks: list[dict] | None = None) -> dic
 
     memory      = step4_memory(graph)
     top_nodes   = step5_vector_retrieval(graph, query)
-    answer_data = step6_generate_answer(memory, top_nodes, query)
     schema      = step6_reason_and_generate(memory, top_nodes, graph, query)
 
     top_ids = {n["id"] for n in top_nodes}
@@ -1030,6 +1108,17 @@ def run_pipeline(text: str, query: str, blocks: list[dict] | None = None) -> dic
     except PipelineError:
         mindmap = None
 
+    # Passage-RAG: дословные разделы + эмбеддинги (покрывают документ целиком, в т.ч.
+    # таблицы/списки, которых нет в сущностном графе). Ответ заземляем на них — иначе
+    # модель отвечает «в тексте нет», когда информация есть только вне сущностей.
+    passages = []
+    try:
+        passages = build_passages(mindmap, graph.get("real_embed", False))
+    except PipelineError:
+        passages = []
+    sources     = retrieve_passages(passages, query, graph.get("real_embed", False))
+    answer_data = step6_generate_answer(memory, top_nodes, query, sources)
+
     # какое намерение вопроса определила система (одинаково для всех top-узлов)
     query_intent = top_nodes[0].get("query_intent") if top_nodes else None
     explanation = {
@@ -1052,8 +1141,8 @@ def run_pipeline(text: str, query: str, blocks: list[dict] | None = None) -> dic
         "schema":      schema,
         "graph":       serialize_graph(graph, top_ids, info),
         "mindmap":     mindmap,   # иерархическое дерево (может быть None → фронт рисует graph)
-        # слепок графа для повторных вопросов через /api/ask (без пересборки)
-        "graph_state": _graph_state(graph, memory),
+        # слепок графа + дословные разделы для повторных вопросов через /api/ask
+        "graph_state": _graph_state(graph, memory, passages),
         "explanation": explanation,
         "stats": {
             "words":  len(text.split()),
