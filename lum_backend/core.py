@@ -881,6 +881,83 @@ def serialize_graph(graph: dict, top_ids: set[str], info: dict | None = None) ->
 
 # ─── ГЛАВНАЯ ФУНКЦИЯ ──────────────────────────────────────────────────────────
 
+def _graph_state(graph: dict, memory: str) -> dict:
+    """Компактный «слепок» концепт-графа для повторных вопросов (RAG без пересборки).
+
+    Кладём только то, что нужно для step5 (векторный поиск) + step6 (ответ):
+    имя/тип/описание/упоминания/вектор узла, рёбра, память и флаг реальных
+    эмбеддингов. Позиции/блоки/мир-инфа в ответе не участвуют — их не тащим.
+    Этот объект уходит на фронт и возвращается в /api/ask как есть.
+    """
+    return {
+        "nodes": [
+            {
+                "id":            n["id"],
+                "name":          n["name"],
+                "type":          n["type"],
+                "description":   n.get("description", ""),
+                "mentions":      n["mentions"],
+                "merged_vector": n["merged_vector"],
+            }
+            for n in graph["nodes"].values()
+        ],
+        "edges":      graph["edges"],
+        "memory":     memory,
+        "real_embed": graph.get("real_embed", False),
+    }
+
+
+def answer_from_state(state: dict, query: str) -> dict:
+    """Лёгкий ответ поверх УЖЕ построенного графа (никакой пересборки).
+
+    Берёт слепок графа из _graph_state, гоняет только step5 (векторный поиск)
+    и step6 (генерация ответа) + собирает explanation. Дерево (mindmap) не
+    трогаем — оно стабильно; подсветку in_answer фронт пересчитает сам по
+    именам из in_answer_names.
+    """
+    if not query or not query.strip():
+        raise PipelineError("Пустой запрос")
+    if not GEMINI_API_KEY:
+        raise PipelineError("GEMINI_API_KEY не задан в переменных окружения")
+
+    raw_nodes = (state or {}).get("nodes") or []
+    if not raw_nodes:
+        raise PipelineError("Пустой граф — нужно сначала построить документ")
+
+    graph = {
+        "nodes":      {n["id"]: dict(n) for n in raw_nodes},
+        "edges":      (state or {}).get("edges") or [],
+        "real_embed": (state or {}).get("real_embed", False),
+    }
+    memory = (state or {}).get("memory", "")
+
+    top_nodes   = step5_vector_retrieval(graph, query)
+    answer_data = step6_generate_answer(memory, top_nodes, query)
+
+    top_ids = {n["id"] for n in top_nodes}
+    query_intent = top_nodes[0].get("query_intent") if top_nodes else None
+    explanation = {
+        "query_intent": query_intent,
+        "path_nodes": [
+            {"id": n["id"], "name": n["name"], "type": n["type"],
+             "similarity": n["similarity"],
+             "type_matched": n.get("type_matched", False)}
+            for n in top_nodes
+        ],
+        "path_edges": [
+            e for e in graph["edges"]
+            if e["from"] in top_ids or e["to"] in top_ids
+        ],
+    }
+    return {
+        "query":           query,
+        "answer":          answer_data,
+        "explanation":     explanation,
+        # имена узлов-ответа → фронт пересветит стабильное дерево (title+full)
+        "in_answer_names": [n["name"] for n in top_nodes],
+    }
+
+
 def run_pipeline(text: str, query: str, blocks: list[dict] | None = None) -> dict:
     """
     Полный прогон. Возвращает dict, готовый к json-ответу API.
@@ -975,6 +1052,8 @@ def run_pipeline(text: str, query: str, blocks: list[dict] | None = None) -> dic
         "schema":      schema,
         "graph":       serialize_graph(graph, top_ids, info),
         "mindmap":     mindmap,   # иерархическое дерево (может быть None → фронт рисует graph)
+        # слепок графа для повторных вопросов через /api/ask (без пересборки)
+        "graph_state": _graph_state(graph, memory),
         "explanation": explanation,
         "stats": {
             "words":  len(text.split()),

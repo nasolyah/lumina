@@ -719,6 +719,7 @@
   let currentChatId = null;  // id строки в Supabase (null = новый несохранённый)
   let chatMessages = [];     // переписка для сохранения: {role:'user',text} | {role:'bot',answer,explanation}
   let lastGraph = null;      // последний отрисованный граф/mindmap (для восстановления)
+  let graphState = null;     // слепок концепт-графа с 1-го analyze → повторные вопросы через /api/ask (без пересборки)
   let collapsed = new Set(); // id узлов со СВЁРНУТЫМИ детьми (сохраняется между перерисовками)
   let lastManifest = null;   // манифест spatial-режима (страницы+блоки); MVP: только в сессии
   let ingestPromise = null;  // промис фонового ingest PDF (analyze ждёт его до сборки графа)
@@ -1051,7 +1052,7 @@
     currentText = text;
 
     // новый источник → новый чат: сбрасываем состояние и переписку
-    currentChatId = null; chatMessages = []; lastGraph = null;
+    currentChatId = null; chatMessages = []; lastGraph = null; graphState = null;
     msgs.innerHTML = '';
 
     closeModal();
@@ -1080,29 +1081,54 @@
     const thinkingEl = addThinking();
     setAsk(false);
 
+    // Документ уже построен (есть слепок графа) и это НЕ первый вопрос → лёгкий
+    // путь /api/ask: только retrieval + ответ поверх кэша. Граф/дерево не пере-
+    // собираем (дёшево + дерево стабильно, не «плавает» на каждый вопрос).
+    const useAsk = !isFirst && graphState && lastGraph;
+
     try {
-      // ждём фоновый ingest PDF, чтобы манифест был готов до сборки графа — иначе
-      // блоки не уйдут в analyze и узлы получат несовпадающие id (см. ingestPromise)
-      if (ingestPromise) { try { await ingestPromise; } catch (_) {} }
-      // PDF: шлём блоки манифеста → узлы графа придут с их block_ids (точная привязка)
-      const blocks = (lastManifest && lastManifest.blocks)
-        ? lastManifest.blocks.map(b => ({ id: b.id, text: b.text, page: b.page, bbox: b.bbox })) : undefined;
-      const res = await fetch(API_BASE + '/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
-        body: JSON.stringify({ text: currentText, query, blocks })
-      });
-      const data = await res.json();
+      let res, data;
+      if (useAsk) {
+        res = await fetch(API_BASE + '/api/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
+          body: JSON.stringify({ graph_state: graphState, query })
+        });
+        data = await res.json();
+      } else {
+        // ждём фоновый ingest PDF, чтобы манифест был готов до сборки графа — иначе
+        // блоки не уйдут в analyze и узлы получат несовпадающие id (см. ingestPromise)
+        if (ingestPromise) { try { await ingestPromise; } catch (_) {} }
+        // PDF: шлём блоки манифеста → узлы графа придут с их block_ids (точная привязка)
+        const blocks = (lastManifest && lastManifest.blocks)
+          ? lastManifest.blocks.map(b => ({ id: b.id, text: b.text, page: b.page, bbox: b.bbox })) : undefined;
+        res = await fetch(API_BASE + '/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
+          body: JSON.stringify({ text: currentText, query, blocks })
+        });
+        data = await res.json();
+      }
       thinkingEl.remove();
 
       if (!res.ok) {
         if (res.status === 401) showGate('Сессия истекла — войдите снова.');
+        // лёгкий путь сломался (напр. устаревший слепок) → сбрасываем кэш, следующий
+        // вопрос пойдёт через полный /api/analyze и пересоберёт документ
+        if (useAsk) graphState = null;
         addErrorMsg(data.detail || 'Не удалось обработать запрос.'); setAsk(true); return;
       }
 
-      lastGraph = data.mindmap || data.graph;
-      renderGraph(lastGraph);
-      renderStats(data.stats);
+      if (useAsk) {
+        // дерево то же — только пересвечиваем путь к ответу по именам узлов-ответа
+        remarkInAnswer(lastGraph, data.in_answer_names || []);
+        renderGraph(lastGraph, /*preserveView*/true);
+      } else {
+        lastGraph = data.mindmap || data.graph;
+        graphState = data.graph_state || null;   // кэш для повторных вопросов
+        renderGraph(lastGraph);
+        renderStats(data.stats);
+      }
       addBotMsg(data);
       saveChat();
     } catch (err) {
@@ -1111,6 +1137,20 @@
     } finally {
       setAsk(true);
     }
+  }
+
+  // Пересвет пути к ответу на СТАБИЛЬНОМ дереве (для /api/ask): узел «в ответе»,
+  // если имя одного из top-узлов встречается в его тексте — та же логика, что на
+  // бэке (is_ans по title+full). Ребро «в ответе», если его ребёнок in_answer.
+  function remarkInAnswer(graph, names){
+    const low = (names || []).map(s => (s || '').trim().toLowerCase()).filter(Boolean);
+    const isAns = (n) => {
+      const blob = ((n.name || '') + ' ' + (n.full || n.excerpt || n.description || '')).toLowerCase();
+      return low.some(nm => blob.includes(nm));
+    };
+    graph.nodes.forEach(n => { n.in_answer = isAns(n); });
+    const ansIds = new Set(graph.nodes.filter(n => n.in_answer).map(n => n.id));
+    graph.edges.forEach(e => { e.in_answer = ansIds.has(e.to); });
   }
 
   function setAsk(on){ $('askBtn').disabled = !on; $('q').disabled = !on; if(on) $('q').focus(); }
@@ -1883,7 +1923,7 @@
   $('chatsClose').onclick = closeChatsDrawer;
   chatsBackdrop.onclick = closeChatsDrawer;
   $('newChatBtn').onclick = () => {
-    currentChatId = null; chatMessages = []; lastGraph = null;
+    currentChatId = null; chatMessages = []; lastGraph = null; graphState = null;
     resetSourceInputs();
     msgs.innerHTML = '';
     $('stageEmpty').classList.remove('hidden');
@@ -1947,7 +1987,7 @@
       if (error) throw error;
       // если удалили открытый сейчас чат — сбрасываем на пустое состояние
       if (currentChatId === id) {
-        currentChatId = null; chatMessages = []; lastGraph = null;
+        currentChatId = null; chatMessages = []; lastGraph = null; graphState = null;
         resetSourceInputs();
         msgs.innerHTML = '';
         $('stageEmpty').classList.remove('hidden');
@@ -1974,6 +2014,9 @@
         else if (m.role === 'bot') addBotMsg({ answer: m.answer, explanation: m.explanation }, /*noPush*/true);
       }
       $('stageEmpty').classList.add('hidden');
+      // загруженный чат: слепок графа не сохраняли → следующий вопрос пойдёт через
+      // полный /api/analyze (пересоберёт документ). Дешёвый /api/ask — только в сессии.
+      graphState = null;
       if (data.mindmap) { lastGraph = data.mindmap; renderGraph(data.mindmap); }
       // восстановить spatial из сохранённого манифеста (чаты v2 со Storage)
       if (data.manifest && data.manifest.pages && data.manifest.pages.length) {

@@ -139,7 +139,11 @@ def _group_words_into_blocks(words: list[dict]) -> list[dict]:
         x1 = max(b[2] for b in boxes); bottom = max(b[3] for b in boxes)
         text = "\n".join(line_text(ln) for ln in blk).strip()
         h = (bottom - top) / max(len(blk), 1)
-        is_heading = len(blk) == 1 and median_h and h >= median_h * 1.15 and len(text) < 80
+        # заголовок: одиночная КОРОТКАЯ строка с крупными глифами. Ограничение по числу
+        # слов важно — иначе длинное предложение-формула («The equation … = 0 …»)
+        # ошибочно попадает в заголовки из-за высоких матем-символов.
+        is_heading = (len(blk) == 1 and median_h and h >= median_h * 1.15
+                      and len(text) < 80 and len(text.split()) <= 7)
         out.append({
             "bbox": [round(x0, 1), round(top, 1), round(x1, 1), round(bottom, 1)],
             "kind": "heading" if is_heading else "text",

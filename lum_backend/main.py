@@ -113,6 +113,13 @@ class AnalyzeRequest(BaseModel):
     blocks: Optional[list[Block]] = None
 
 
+class AskRequest(BaseModel):
+    # слепок графа из первого /api/analyze (data.graph_state) — фронт кэширует и
+    # присылает обратно, чтобы не пересобирать документ на каждый вопрос.
+    graph_state: dict = Field(..., description="Слепок концепт-графа (nodes/edges/memory)")
+    query: str = Field(..., min_length=1, description="Следующий вопрос по тому же документу")
+
+
 class AskNodeRequest(BaseModel):
     node_title: str = Field(..., min_length=1, description="Заголовок ветки/узла")
     node_text: str = Field("", description="Текст (excerpt/full) этой ветки — контекст ответа")
@@ -184,6 +191,24 @@ def analyze(req: AnalyzeRequest, user: dict = Depends(require_user)):
     except Exception as e:
         # Непредвиденное → 500, но без утечки внутренних деталей наружу
         logger.exception("analyze: непредвиденная ошибка")
+        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка: {type(e).__name__}")
+
+
+@app.post("/api/ask")
+def ask(req: AskRequest, user: dict = Depends(require_user)):
+    """
+    Повторный вопрос по УЖЕ построенному документу: только retrieval + ответ
+    поверх закэшированного графа (graph_state из первого /api/analyze). Не
+    пересобирает сущности/эмбеддинги/дерево — дёшево и дерево не «плавает».
+    Возвращает: answer, explanation, in_answer_names (для пересветки дерева).
+    """
+    try:
+        return core.answer_from_state(req.graph_state, req.query)
+    except core.PipelineError as e:
+        logger.error("ask: PipelineError: %s", e)
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("ask: непредвиденная ошибка")
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка: {type(e).__name__}")
 
 
