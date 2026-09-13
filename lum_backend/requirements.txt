@@ -10,3 +10,5 @@ pyjwt[crypto]==2.10.1
 pdfplumber==0.11.8
 pypdfium2==5.13.0
 Pillow==11.3.0
+# Презентации .pptx → текст для графа (MIT, лицензионно чисто; легаси .ppt не читает)
+python-pptx==1.0.2

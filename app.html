@@ -611,12 +611,12 @@
           <div class="big"><span class="ic" data-ic="upload" data-sz="30"></span></div>
           <div class="spinner"></div>
           <div class="drop-hint">Перетащите файл сюда или нажмите, чтобы выбрать</div>
-          <div class="fname" id="fname">поддерживается .txt, .md, .pdf</div>
-          <input type="file" id="fileInput" accept=".txt,.md,.pdf,text/plain,application/pdf" class="hidden">
+          <div class="fname" id="fname">поддерживается .txt, .md, .pdf, .pptx</div>
+          <input type="file" id="fileInput" accept=".txt,.md,.pdf,.pptx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation" class="hidden">
         </div>
       </div>
       <div class="hint">Совет: чем содержательнее текст, тем богаче граф. Оптимально — 300–3000 слов.</div>
-      <div class="hint" id="limitsInfo">Лимиты: текст до 100 000 символов · файлы .txt, .md, .pdf до 15 МБ</div>
+      <div class="hint" id="limitsInfo">Лимиты: текст до 100 000 символов · файлы .txt, .md, .pdf, .pptx до 15 МБ</div>
       <div class="actions">
         <button class="btn primary" id="analyzeBtn">Построить граф</button>
       </div>
@@ -836,10 +836,13 @@
   fileInput.onchange = () => { if (fileInput.files[0]) readFile(fileInput.files[0]); };
 
   function readFile(file){
-    const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
-    if (isPdf) { uploadPdf(file); return; }
+    // PDF и .pptx парсим на бэкенде (бинарные) → /api/extract; .txt/.md читаем тут.
+    const isDoc = /\.(pdf|pptx)$/i.test(file.name)
+      || file.type === 'application/pdf'
+      || file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    if (isDoc) { uploadPdf(file); return; }
     if (!/\.(txt|md)$/i.test(file.name)) {
-      toast('Поддерживаются .txt, .md и .pdf.');
+      toast('Поддерживаются .txt, .md, .pdf и .pptx.');
       return;
     }
     const r = new FileReader();
@@ -847,9 +850,11 @@
     r.readAsText(file);
   }
 
-  // PDF парсим на бэкенде: шлём файл в /api/extract, получаем чистый текст.
+  // PDF/PPTX парсим на бэкенде: шлём файл в /api/extract, получаем чистый текст.
   async function uploadPdf(file){
     const fname = $('fname');
+    const isPptx = /\.pptx$/i.test(file.name)
+      || file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
     $('drop').classList.add('loading');                 // спиннер + подсветка
     fname.textContent = `Разбираю «${file.name}»…`;
     try {
@@ -860,18 +865,20 @@
       if (!res.ok) {
         if (res.status === 401) showGate('Сессия истекла — войдите снова.');
         $('drop').classList.remove('loading');
-        fname.textContent = 'поддерживается .txt, .md, .pdf';
-        toast(data.detail || 'Не удалось разобрать PDF.');
+        fname.textContent = 'поддерживается .txt, .md, .pdf, .pptx';
+        toast(data.detail || 'Не удалось разобрать файл.');
         return;
       }
       currentText = data.text;
       $('drop').classList.remove('loading');
+      const unit = data.kind === 'pptx' ? 'слайд.' : 'стр.';
       const ocrTag = data.ocr ? ' · распознано OCR' : '';
-      fname.textContent = `✓ ${file.name} · ${data.pages} стр., ${data.chars.toLocaleString('ru')} символов${ocrTag}`;
-      ingestPromise = ingestPdf(file);   // фоном тянем spatial-манифест; analyze его дождётся
+      fname.textContent = `✓ ${file.name} · ${data.pages} ${unit}, ${data.chars.toLocaleString('ru')} символов${ocrTag}`;
+      // spatial-манифест строим ТОЛЬКО для PDF (у .pptx нет постраничной вёрстки для вырезок)
+      ingestPromise = isPptx ? null : ingestPdf(file);
     } catch (err) {
       $('drop').classList.remove('loading');
-      fname.textContent = 'поддерживается .txt, .md, .pdf';
+      fname.textContent = 'поддерживается .txt, .md, .pdf, .pptx';
       toast('Нет связи с сервером для разбора PDF: ' + API_BASE);
     }
   }
@@ -929,7 +936,7 @@
   // файл/текст, хотя реального содержимого уже нет ("нужно сначала загрузить файл").
   function resetSourceInputs(){
     currentText = '';
-    $('fname').textContent = 'поддерживается .txt, .md, .pdf';
+    $('fname').textContent = 'поддерживается .txt, .md, .pdf, .pptx';
     $('srcText').value = '';
     resetSpatial();
   }

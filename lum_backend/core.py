@@ -242,6 +242,44 @@ def _gemini_vision_ocr(webp: bytes, model: str, retries: int = RETRIES) -> str:
     raise PipelineError(f"OCR: все попытки к модели {model} исчерпаны")
 
 
+def extract_pptx_text(raw: bytes) -> tuple[str, int]:
+    """Презентация .pptx → (текст, число слайдов). Текст собираем по слайдам:
+    заголовки/буллеты, таблицы (ячейки через « | »), заметки докладчика. Каждый
+    слайд отделён пустой строкой → дальше режется на блоки-абзацы как обычный текст.
+    python-pptx (MIT) — лицензионно чисто, легаси .ppt не поддерживает."""
+    import io as _io
+    from pptx import Presentation
+    prs = Presentation(_io.BytesIO(raw))
+    slides = list(prs.slides)
+    out = []
+    for i, slide in enumerate(slides):
+        parts = []
+        for shape in slide.shapes:
+            try:
+                if shape.has_text_frame:
+                    for p in shape.text_frame.paragraphs:
+                        line = ("".join(r.text for r in p.runs) or p.text or "").strip()
+                        if line:
+                            parts.append(line)
+                if shape.has_table:
+                    for row in shape.table.rows:
+                        cells = [(_c.text or "").strip() for _c in row.cells]
+                        if any(cells):
+                            parts.append(" | ".join(cells))
+            except Exception:
+                continue   # экзотическая фигура — пропускаем, слайд не роняем
+        try:
+            if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
+                note = (slide.notes_slide.notes_text_frame.text or "").strip()
+                if note:
+                    parts.append("Заметки: " + note)
+        except Exception:
+            pass
+        if parts:
+            out.append(f"Слайд {i + 1}\n" + "\n".join(parts))
+    return "\n\n".join(out).strip(), len(slides)
+
+
 def ocr_pdf(raw: bytes, max_pages: int | None = None) -> str:
     """Распознаёт скан PDF (без текстового слоя) через Gemini Vision: рендерит
     страницы и OCR-ит каждую. Возвращает склеенный текст (или '' если OCR выкл /

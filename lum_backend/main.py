@@ -176,7 +176,7 @@ def health():
         # лимиты — чтобы их можно было проверить на живом сервере
         "max_text_chars": MAX_TEXT_CHARS,
         "max_pdf_mb": MAX_PDF_BYTES // (1024 * 1024),
-        "accepted_files": [".txt", ".md", ".pdf"],
+        "accepted_files": [".txt", ".md", ".pdf", ".pptx"],
     }
 
 
@@ -328,13 +328,16 @@ def infographic(req: InfographicRequest, user: dict = Depends(require_user)):
 @app.post("/api/extract")
 async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(require_user)):
     """
-    Принимает PDF, возвращает извлечённый текст: {text, chars, pages}.
-    Парсинг на бэке надёжнее браузерного; фронт затем шлёт text в /api/analyze.
+    Принимает PDF или презентацию .pptx, возвращает извлечённый текст:
+    {text, chars, pages, kind}. Парсинг на бэке надёжнее браузерного; фронт затем
+    шлёт text в /api/analyze. Для .pptx spatial-режим не строится (только граф).
     """
     filename = (file.filename or "").lower()
-    is_pdf = filename.endswith(".pdf") or file.content_type == "application/pdf"
-    if not is_pdf:
-        raise HTTPException(status_code=400, detail="Ожидается PDF-файл (.pdf).")
+    ct = file.content_type or ""
+    is_pdf = filename.endswith(".pdf") or ct == "application/pdf"
+    is_pptx = filename.endswith(".pptx") or ct == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    if not (is_pdf or is_pptx):
+        raise HTTPException(status_code=400, detail="Ожидается PDF (.pdf) или презентация (.pptx).")
 
     raw = await file.read()
     if not raw:
@@ -342,6 +345,17 @@ async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(require
     if len(raw) > MAX_PDF_BYTES:
         mb = MAX_PDF_BYTES // (1024 * 1024)
         raise HTTPException(status_code=400, detail=f"Файл слишком большой (макс. {mb} МБ).")
+
+    # ── Презентация .pptx ── (только текст → граф; spatial/вырезки не строим)
+    if is_pptx:
+        try:
+            text, slides = core.extract_pptx_text(raw)
+        except Exception as e:
+            logger.warning("extract: pptx parse failed: %s", e)
+            raise HTTPException(status_code=400, detail=f"Не удалось разобрать презентацию: {type(e).__name__}")
+        if not text:
+            raise HTTPException(status_code=400, detail="В презентации не нашлось текста для разбора.")
+        return {"text": text, "chars": len(text), "pages": slides, "kind": "pptx", "ocr": False}
 
     try:
         from pypdf import PdfReader
@@ -382,7 +396,7 @@ async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(require
             detail="Из PDF не удалось извлечь текст — это скан без текстового слоя, и OCR не дал результата.",
         )
 
-    return {"text": text, "chars": len(text), "pages": pages, "ocr": ocr_used}
+    return {"text": text, "chars": len(text), "pages": pages, "kind": "pdf", "ocr": ocr_used}
 
 
 # ─── ASYNC INGEST (job + polling) ─────────────────────────────────────────────
