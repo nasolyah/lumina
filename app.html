@@ -736,6 +736,8 @@
   let currentView = 'graph'; // 'graph' | 'spatial'
   let treeParent = new Map();// child_id → parent_id остовного дерева (для разворота предков)
   let currentUserEmail = ''; // email текущего пользователя (для обхода лимита владельцем)
+  let currentUserId = '';    // auth.uid текущего пользователя (первая папка пути в Storage)
+  let sessionDocKey = null;  // ключ текущего документа для путей инфографик в Storage
 
   // ── ЭЛЕМЕНТЫ ──
   const $ = id => document.getElementById(id);
@@ -1031,8 +1033,14 @@
         return;
       }
       infographicCache[nid] = data;           // кэш за сессию → переоткрыть/скачать позже
-      updateInfographicButtons(node);
       openInfographic(data);
+      // персист: заливаем PNG в Storage и сохраняем метаданные в чат (между сессиями).
+      // Если Storage не настроен/недоступен — не падаем, остаётся сессионный кэш.
+      try {
+        const path = await uploadInfographic(nid, data.image);
+        if (path) { infographicCache[nid].path = path; await saveChat(); }
+      } catch (e) { console.error('infographic persist', e); }
+      updateInfographicButtons(node);
     } catch (err) {
       showInfographicError('Нет связи с сервером Lumina.');
     } finally {
@@ -1044,6 +1052,48 @@
     const data = nodeModalId && infographicCache[nodeModalId];
     if (data) openInfographic(data);
   };
+
+  // восстановить сохранённые инфографики чата: пути из Storage → signed URL → кэш.
+  // path сохраняем в записи кэша, чтобы «Пересоздать» не плодил новые файлы, а saveChat
+  // снова записал те же метаданные.
+  async function restoreInfographics(meta){
+    infographicCache = {};
+    if (!meta || !sb) return;
+    const entries = Object.entries(meta).filter(([, d]) => d && d.path);
+    if (!entries.length) return;
+    try {
+      const paths = entries.map(([, d]) => d.path);
+      const { data, error } = await sb.storage.from('documents').createSignedUrls(paths, 3600);
+      if (error) { console.warn('restoreInfographics', error.message); return; }
+      entries.forEach(([nid, d], i) => {
+        const signed = data[i] && data[i].signedUrl;
+        if (signed) infographicCache[nid] = { image: signed, title: d.title, points: d.points, model: d.model, path: d.path };
+      });
+    } catch (e) { console.warn('restoreInfographics', e); }
+  }
+
+  // короткий стабильный хэш строки → безопасное имя файла (без коллизий кириллицы)
+  function _hashName(s){
+    let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+    return h.toString(36);
+  }
+  // залить PNG инфографики в приватный бакет documents (RLS: {uid}/...); вернуть путь.
+  // Требует настроенный бакет (supabase_storage.sql). При сбое возвращает null.
+  async function uploadInfographic(nid, dataUrl){
+    if (!sb || !currentUserId) return null;
+    // папку привязываем к чату (стабильна между сессиями → «Пересоздать» перезаписывает
+    // тот же файл); пока чат не сохранён — временный ключ сессии
+    if (!sessionDocKey) sessionDocKey = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+    const docKey = currentChatId || sessionDocKey;
+    const path = `${currentUserId}/infographics/${docKey}/${_hashName(nid)}.png`;
+    try {
+      const blob = await (await fetch(dataUrl)).blob();
+      const { error } = await sb.storage.from('documents')
+        .upload(path, blob, { contentType: 'image/png', upsert: true });
+      if (error) { console.warn('uploadInfographic', error.message); return null; }
+      return path;
+    } catch (e) { console.warn('uploadInfographic', e); return null; }
+  }
 
   // показать кнопку «Открыть инфографику», если для узла она уже создана в этой сессии
   function updateInfographicButtons(node){
@@ -1094,12 +1144,22 @@
       tag.style.cssText = 'font:11px JetBrains Mono,monospace;color:#64748b;';
       bar.appendChild(tag);
     }
-    const dl = document.createElement('a');
+    const fname = (data.title || 'infographic').replace(/[^\wа-яё\- ]/gi, '').slice(0, 60) + '.png';
+    const dl = document.createElement('button');
     dl.textContent = '⬇ Скачать PNG';
-    dl.href = data.image;
-    dl.download = (data.title || 'infographic').replace(/[^\wа-яё\- ]/gi, '').slice(0, 60) + '.png';
-    dl.style.cssText = 'flex:1;text-align:center;padding:9px 14px;font:600 13px Inter,sans-serif;'
-      + 'background:#7C6FF0;color:#fff;border-radius:8px;text-decoration:none;';
+    dl.style.cssText = 'flex:1;padding:9px 14px;font:600 13px Inter,sans-serif;border:none;'
+      + 'background:#7C6FF0;color:#fff;border-radius:8px;cursor:pointer;';
+    // скачиваем через blob — работает и для data URL, и для signed URL из Storage
+    // (у cross-origin ссылки атрибут download игнорируется, поэтому не полагаемся на него)
+    dl.onclick = async () => {
+      try {
+        const blob = await (await fetch(data.image)).blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = fname;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+      } catch (e) { window.open(data.image, '_blank'); }
+    };
     bar.appendChild(dl);
     box.appendChild(bar);
     $('figOverlay').classList.add('open');
@@ -1167,7 +1227,7 @@
     currentText = text;
 
     // новый источник → новый чат: сбрасываем состояние и переписку
-    currentChatId = null; chatMessages = []; lastGraph = null; graphState = null; infographicCache = {};
+    currentChatId = null; chatMessages = []; lastGraph = null; graphState = null; infographicCache = {}; sessionDocKey = null;
     msgs.innerHTML = '';
 
     closeModal();
@@ -2013,6 +2073,7 @@
 
   function showUser(user){
     currentUserEmail = user.email || '';
+    currentUserId = user.id || '';   // для путей в Storage (RLS: первая папка = uid)
     const name = user.user_metadata?.full_name || user.user_metadata?.name || user.email || 'Пользователь';
     const avatar = user.user_metadata?.avatar_url || user.user_metadata?.picture;
     $('userName').textContent = name;
@@ -2048,7 +2109,7 @@
   $('chatsClose').onclick = closeChatsDrawer;
   chatsBackdrop.onclick = closeChatsDrawer;
   $('newChatBtn').onclick = () => {
-    currentChatId = null; chatMessages = []; lastGraph = null; graphState = null; infographicCache = {};
+    currentChatId = null; chatMessages = []; lastGraph = null; graphState = null; infographicCache = {}; sessionDocKey = null;
     resetSourceInputs();
     msgs.innerHTML = '';
     $('stageEmpty').classList.remove('hidden');
@@ -2068,19 +2129,29 @@
     // колонку chats.manifest jsonb (см. supabase_storage.sql). В dataurl-режиме null.
     const savedManifest = slimManifestForSave(lastManifest);
     if (savedManifest) row.manifest = savedManifest;
+    // инфографики: только те, что залиты в Storage (есть path). Картинку не храним в
+    // строке — только путь + лёгкие метаданные. Требует колонку chats.infographics jsonb.
+    const infoMeta = {};
+    for (const [nid, d] of Object.entries(infographicCache)) {
+      if (d && d.path) infoMeta[nid] = { path: d.path, title: d.title, points: d.points, model: d.model };
+    }
+    if (Object.keys(infoMeta).length) row.infographics = infoMeta;
+    // запись с мягким откатом: если колонки infographics ещё нет в схеме — сохраняем
+    // без неё (не ломаем сохранение чата/сообщений), инфографика остаётся в сессии
+    const writeChat = async (r) => currentChatId
+      ? await sb.from('chats').update({ ...r, updated_at: new Date().toISOString() }).eq('id', currentChatId)
+      : await sb.from('chats').insert(r).select('id').single();
     try {
-      if (currentChatId) {
-        await sb.from('chats').update({ ...row, updated_at: new Date().toISOString() }).eq('id', currentChatId);
-      } else {
-        const { data, error } = await sb.from('chats').insert(row).select('id').single();
-        if (error) {
-          // триггер в БД отклонил вставку — лимит бесплатного тарифа исчерпан
-          // (страховка на случай, если фронт-проверку обошли)
-          if (/CHAT_LIMIT_REACHED/i.test(error.message || '')) { openPaywall(); return; }
-          throw error;
-        }
-        if (data) currentChatId = data.id;
+      let res = await writeChat(row);
+      if (res.error && row.infographics && /infographics/i.test(res.error.message || '')) {
+        const { infographics, ...rest } = row;    // колонки нет → без неё
+        res = await writeChat(rest);
       }
+      if (res.error) {
+        if (/CHAT_LIMIT_REACHED/i.test(res.error.message || '')) { openPaywall(); return; }
+        throw res.error;
+      }
+      if (!currentChatId && res.data) currentChatId = res.data.id;
     } catch (e) { console.error('saveChat', e); }
   }
 
@@ -2112,7 +2183,7 @@
       if (error) throw error;
       // если удалили открытый сейчас чат — сбрасываем на пустое состояние
       if (currentChatId === id) {
-        currentChatId = null; chatMessages = []; lastGraph = null; graphState = null; infographicCache = {};
+        currentChatId = null; chatMessages = []; lastGraph = null; graphState = null; infographicCache = {}; sessionDocKey = null;
         resetSourceInputs();
         msgs.innerHTML = '';
         $('stageEmpty').classList.remove('hidden');
@@ -2143,6 +2214,8 @@
       // полный /api/analyze (пересоберёт документ). Дешёвый /api/ask — только в сессии.
       graphState = null;
       if (data.mindmap) { lastGraph = data.mindmap; renderGraph(data.mindmap); }
+      // восстановить инфографики: подписать пути из Storage → положить в сессионный кэш
+      await restoreInfographics(data.infographics);
       // восстановить spatial из сохранённого манифеста (чаты v2 со Storage)
       if (data.manifest && data.manifest.pages && data.manifest.pages.length) {
         lastManifest = data.manifest;
