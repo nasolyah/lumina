@@ -130,9 +130,10 @@
     border: 2px dashed rgba(52,211,153,.7); background: rgba(52,211,153,.06);
     transition: background .12s; }
   .doc-fig:hover { background: rgba(52,211,153,.2); }
-  .doc-fig::after { content: '🖼'; position: absolute; top: 2px; right: 4px; font-size: 12px;
+  .doc-fig::after { content: ''; position: absolute; top: 3px; right: 3px; width: 13px; height: 13px;
+    background: var(--ok); -webkit-mask: var(--ic-image) center/contain no-repeat; mask: var(--ic-image) center/contain no-repeat;
     filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
-  .doc-fig.drawing::after { content: '📊'; }
+  .doc-fig.drawing::after { -webkit-mask-image: var(--ic-chart); mask-image: var(--ic-chart); }
   /* Слой связей фигура↔текст (поверх страниц, клики проходят сквозь) */
   #docLinks { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; z-index: 5; }
   /* Лайтбокс увеличенной фигуры */
@@ -262,6 +263,7 @@
   .btn {
     font-family: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
     border: none; border-radius: 12px; padding: 11px 16px; transition: transform .1s, opacity .2s;
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   }
   .btn:active { transform: translateY(1px); }
   .btn:disabled { opacity: .5; cursor: not-allowed; }
@@ -306,7 +308,7 @@
     color: var(--muted); text-align: center; padding: 24px; cursor: pointer; transition: .2s;
   }
   .drop:hover, .drop.dragover { background: rgba(108,99,255,0.06); border-color: var(--accent); color: var(--text); }
-  .drop .big { font-size: 32px; }
+  .drop .big { color: var(--glow); }
   .drop .fname { color: var(--glow); font-size: 13px; font-family: 'JetBrains Mono', monospace; }
   /* Состояние загрузки: спиннер вместо ↥, подсветка рамки и крупный яркий текст */
   .drop .spinner { display: none; width: 38px; height: 38px; border-radius: 50%;
@@ -465,13 +467,48 @@
     text-align: center; padding: 20px 0; color: var(--ok);
     font-size: 15px; font-weight: 500;
   }
+
+  /* ── ICONS: единый набор линейных иконок (тот же язык, что на лендинге) ── */
+  .ic { display: inline-flex; align-items: center; justify-content: center; line-height: 0; flex: none; }
+  .ic svg { display: block; }
+
+  /* иконка + подпись в текстовых кнопках */
+  .btn.ghost, .fb-btn, .mbtn, .icon-text { display: inline-flex; align-items: center; gap: 7px; }
+
+  /* ── ЕДИНЫЕ ДЕЙСТВИЯ В МОДАЛКЕ УЗЛА (иконка + подпись, тихий стиль) ── */
+  .mbtn {
+    padding: 7px 13px; font-family: 'Inter', sans-serif; font-weight: 600; font-size: 12.5px;
+    color: var(--text); background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border); border-radius: 9px; cursor: pointer;
+    transition: border-color .18s, background .18s, color .18s;
+  }
+  .mbtn:hover:not(:disabled) { border-color: var(--border-lit); background: rgba(108,99,255,0.08); color: var(--white); }
+  .mbtn .ic { color: var(--glow); }                       /* акцент только на иконке */
+  .mbtn:disabled { opacity: .55; cursor: default; }
+
+  /* ── КНОПКА-ИКОНКА (закрытие модалок/дровера) ── */
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 9px; border: 1px solid transparent;
+    background: transparent; color: var(--muted); cursor: pointer; transition: background .18s, color .18s;
+  }
+  .icon-btn:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+  .modal-close { position: absolute; top: 14px; right: 14px; }
+
+  /* фрагмент/справка: полная рамка + тонкая заливка (без цветного side-stripe) */
+  .src-box { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+    background: rgba(108,99,255,0.05); color: var(--text); font-size: 13.5px; line-height: 1.55; }
+  .src-box.cyan { border-color: rgba(34,211,238,0.22); background: rgba(34,211,238,0.05); }
+  .src-label { display: inline-flex; align-items: center; gap: 6px; font-family: 'Inter', sans-serif;
+    font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px; }
+  .src-label .ic { color: currentColor; }
 </style>
 </head>
 <body>
   <!-- AUTH GATE: показывается, пока пользователь не вошёл через Supabase -->
   <div class="gate show" id="authGate">
     <div class="gate-card">
-      <div class="gate-mark">✦</div>
+      <div class="gate-mark"><span class="ic" data-ic="spark" data-sz="28"></span></div>
       <h1>Вход в Lumina</h1>
       <p>Войдите, чтобы построить граф знаний и задавать вопросы своим источникам.</p>
       <button class="google-btn" id="googleSignIn">
@@ -492,10 +529,10 @@
     <!-- TOPBAR -->
     <header class="topbar">
       <div class="brand"><span class="dot"></span> Lumina</div>
-      <button class="btn ghost" id="myChatsBtn" style="padding:8px 14px;font-size:13px;">☰ Мои чаты</button>
-      <button class="fb-btn" id="feedbackBtn">💬 Фидбэк</button>
+      <button class="btn ghost" id="myChatsBtn" style="padding:8px 14px;font-size:13px;"><span class="ic" data-ic="list" data-sz="16"></span>Мои чаты</button>
+      <button class="fb-btn" id="feedbackBtn"><span class="ic" data-ic="message" data-sz="15"></span>Фидбэк</button>
       <div class="stats" id="stats"></div>
-      <button class="btn ghost" id="newSourceBtn" style="padding:8px 14px;font-size:13px;">Новый источник</button>
+      <button class="btn ghost" id="newSourceBtn" style="padding:8px 14px;font-size:13px;"><span class="ic" data-ic="plus" data-sz="15"></span>Новый источник</button>
       <div class="user-chip" id="userChip">
         <span class="ava" id="userAva"></span>
         <span id="userName"></span>
@@ -508,9 +545,9 @@
     <aside class="drawer" id="chatsDrawer">
       <div class="drawer-head">
         <h3>Мои чаты</h3>
-        <button class="drawer-close" id="chatsClose" aria-label="Закрыть">✕</button>
+        <button class="drawer-close" id="chatsClose" aria-label="Закрыть"><span class="ic" data-ic="close" data-sz="18"></span></button>
       </div>
-      <button class="btn primary" id="newChatBtn" style="flex:none;margin:12px 14px;">+ Новый чат</button>
+      <button class="btn primary" id="newChatBtn" style="flex:none;margin:12px 14px;"><span class="ic" data-ic="plus" data-sz="16"></span>Новый чат</button>
       <div class="chats-list" id="chatsList"></div>
     </aside>
 
@@ -518,7 +555,7 @@
     <main class="stage">
       <div id="graph"></div>
       <div class="stage-empty" id="stageEmpty">
-        <div class="glyph">◈</div>
+        <div class="glyph" style="color:var(--glow)"><span class="ic" data-ic="network" data-sz="36"></span></div>
         <h2>Граф знаний появится здесь</h2>
         <p>Загрузите текст или файл — Lumina разберёт его на понятия и связи, а затем ответит на ваши вопросы, показывая, через какие узлы графа пришёл ответ.</p>
         <button class="btn primary" id="emptyCTA" style="flex:none;width:100%;max-width:220px;margin-top:6px;">Загрузить источник</button>
@@ -559,8 +596,7 @@
   <!-- SOURCE MODAL -->
   <div class="overlay" id="overlay">
     <div class="modal" style="position:relative;">
-      <button id="modalClose" aria-label="Закрыть" title="Закрыть"
-        style="position:absolute;top:12px;right:14px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:#94A3B8;font-size:20px;line-height:1;cursor:pointer;border-radius:8px;">✕</button>
+      <button id="modalClose" class="icon-btn modal-close" aria-label="Закрыть" title="Закрыть"><span class="ic" data-ic="close" data-sz="18"></span></button>
       <h2>Загрузить источник</h2>
       <div class="sub">Вставьте текст или загрузите файл. Lumina построит граф понятий и связей.</div>
       <div class="tabs">
@@ -572,7 +608,7 @@
       </div>
       <div id="pane-file" class="hidden">
         <div class="drop" id="drop">
-          <div class="big">↥</div>
+          <div class="big"><span class="ic" data-ic="upload" data-sz="30"></span></div>
           <div class="spinner"></div>
           <div class="drop-hint">Перетащите файл сюда или нажмите, чтобы выбрать</div>
           <div class="fname" id="fname">поддерживается .txt, .md, .pdf</div>
@@ -590,27 +626,26 @@
   <!-- Модалка узла: описание + фрагмент источника (по клику на блок графа) -->
   <div class="overlay" id="nodeOverlay">
     <div class="modal" style="position:relative; max-width:860px;">
-      <button id="nodeClose" aria-label="Закрыть" title="Закрыть"
-        style="position:absolute;top:12px;right:14px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:#94A3B8;font-size:20px;line-height:1;cursor:pointer;border-radius:8px;">✕</button>
+      <button id="nodeClose" class="icon-btn modal-close" aria-label="Закрыть" title="Закрыть"><span class="ic" data-ic="close" data-sz="18"></span></button>
       <h2 id="nodeTitle" style="margin-right:28px;"></h2>
       <div class="sub" id="nodeType"></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-        <button id="nodeToDoc" title="Показать эту ветку в документе"
-          style="display:none;padding:6px 14px;font-size:12.5px;background:rgba(124,111,240,.15);border:1px solid #7C6FF0;color:#c4b5fd;border-radius:8px;cursor:pointer;">📄 Открыть в документе</button>
-        <button id="nodeInfographic" title="Сгенерировать инфографику по этому разделу"
-          style="padding:6px 14px;font-size:12.5px;background:rgba(34,211,238,.12);border:1px solid #22D3EE;color:#a5f3fc;border-radius:8px;cursor:pointer;">🎨 Инфографика</button>
-        <button id="nodeInfographicView" title="Открыть уже созданную инфографику"
-          style="display:none;padding:6px 14px;font-size:12.5px;background:rgba(52,211,153,.12);border:1px solid #34D399;color:#a7f3d0;border-radius:8px;cursor:pointer;">🖼 Открыть инфографику</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+        <button id="nodeToDoc" class="mbtn" title="Показать эту ветку в документе" style="display:none;">
+          <span class="ic" data-ic="doc" data-sz="15"></span><span class="mbtn-lbl">Открыть в документе</span></button>
+        <button id="nodeInfographic" class="mbtn" title="Сгенерировать инфографику по этому разделу">
+          <span class="ic" data-ic="wand" data-sz="15"></span><span class="mbtn-lbl">Инфографика</span></button>
+        <button id="nodeInfographicView" class="mbtn" title="Открыть уже созданную инфографику" style="display:none;">
+          <span class="ic" data-ic="image" data-sz="15"></span><span class="mbtn-lbl">Открыть инфографику</span></button>
       </div>
       <div id="nodeDesc" style="margin:10px 0 0;color:#CBD5E1;font-size:14px;line-height:1.5;"></div>
-      <div id="nodeSnippetWrap" style="margin-top:16px;">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7C6FF0;margin-bottom:6px;">Фрагмент источника</div>
-        <div id="nodeSnippet" style="background:rgba(20,20,51,0.6);border-left:3px solid #7C6FF0;border-radius:6px;padding:12px 14px;color:#E2E8F0;font-size:13.5px;line-height:1.55;white-space:pre-wrap;"></div>
-        <div id="nodeSnippetHint" style="display:none;font-size:11px;color:#94A3B8;margin-top:6px;">🔍 Нажмите на фрагмент, чтобы увеличить · можно прокрутить</div>
+      <div id="nodeSnippetWrap" style="margin-top:18px;">
+        <div class="src-label" style="color:#a78bfa;"><span class="ic" data-ic="doc" data-sz="13"></span>Фрагмент источника</div>
+        <div id="nodeSnippet" class="src-box" style="white-space:pre-wrap;"></div>
+        <div id="nodeSnippetHint" style="display:none;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-top:7px;"><span class="ic" data-ic="zoom" data-sz="13"></span>Нажмите на фрагмент, чтобы увеличить · можно прокрутить</div>
       </div>
-      <div id="nodeWorldWrap" style="margin-top:14px;">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#22D3EE;margin-bottom:6px;">Кратко о понятии</div>
-        <div id="nodeWorld" style="background:rgba(20,40,51,0.5);border-left:3px solid #22D3EE;border-radius:6px;padding:12px 14px;color:#E2E8F0;font-size:13.5px;line-height:1.55;"></div>
+      <div id="nodeWorldWrap" style="margin-top:16px;">
+        <div class="src-label" style="color:#22D3EE;"><span class="ic" data-ic="spark" data-sz="13"></span>Кратко о понятии</div>
+        <div id="nodeWorld" class="src-box cyan"></div>
       </div>
 
       <!-- САБ-ЧАТ: вопрос строго по этой ветке; ответ станет новым узлом-ответвлением -->
@@ -630,9 +665,8 @@
   <!-- ПЕЙВОЛЛ: лимит бесплатного тарифа исчерпан -->
   <div class="overlay" id="paywallOverlay">
     <div class="modal" style="position:relative; max-width:460px; text-align:center;">
-      <button id="paywallClose" aria-label="Закрыть" title="Закрыть"
-        style="position:absolute;top:12px;right:14px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:#94A3B8;font-size:20px;line-height:1;cursor:pointer;border-radius:8px;">✕</button>
-      <div style="font-size:34px;margin-bottom:10px;">✦</div>
+      <button id="paywallClose" class="icon-btn modal-close" aria-label="Закрыть" title="Закрыть"><span class="ic" data-ic="close" data-sz="18"></span></button>
+      <div style="color:var(--glow);margin-bottom:10px;"><span class="ic" data-ic="spark" data-sz="34"></span></div>
       <h2 style="margin:0 0 8px;">Бесплатные графы закончились</h2>
       <div class="sub" id="paywallText" style="margin-bottom:18px;">Вы использовали все 5 графов бесплатного тарифа.</div>
       <div style="background:rgba(20,20,51,0.6);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:18px;text-align:left;font-size:13.5px;color:#CBD5E1;line-height:1.6;">
@@ -743,6 +777,47 @@
   const $ = id => document.getElementById(id);
   const overlay = $('overlay');
 
+  // ── ИКОНКИ: один линейный набор (stroke=currentColor, как на лендинге) ──
+  const ICONS = {
+    close:    '<path d="M18 6 6 18M6 6l12 12"/>',
+    list:     '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+    message:  '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    plus:     '<path d="M12 5v14M5 12h14"/>',
+    upload:   '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
+    doc:      '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>',
+    image:    '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L5 21"/>',
+    chart:    '<path d="M3 3v18h18"/><path d="M18 9l-5 5-3-3-4 4"/>',
+    wand:     '<path d="M9 4l1.3 3.2L13.5 8.5 10.3 9.8 9 13l-1.3-3.2L4.5 8.5 7.7 7.2z"/><path d="M17.5 13l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+    zoom:     '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/>',
+    scan:     '<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M3 12h18"/>',
+    check:    '<path d="M20 6 9 17l-5-5"/>',
+    alert:    '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
+    download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+    trash:    '<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/>',
+    arrowUp:  '<path d="M12 19V5M5 12l7-7 7 7"/>',
+    spark:    '<path d="M12 2l2.2 7.8L22 12l-7.8 2.2L12 22l-2.2-7.8L2 12l7.8-2.2z"/>',
+    network:  '<circle cx="5" cy="6" r="2.2"/><circle cx="19" cy="6" r="2.2"/><circle cx="12" cy="18" r="2.2"/><path d="M6.9 7.2 10.6 16M17.1 7.2 13.4 16M7 6h10"/>',
+  };
+  function svgIcon(name, size){
+    const p = ICONS[name]; if (!p) return '';
+    const s = size || 16;
+    return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" `
+      + `stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+  }
+  // заполнить статические плейсхолдеры <span class="ic" data-ic="name" data-sz="18">
+  function hydrateIcons(root){
+    (root || document).querySelectorAll('[data-ic]').forEach(el => {
+      el.innerHTML = svgIcon(el.dataset.ic, parseInt(el.dataset.sz || '16', 10));
+    });
+  }
+  // маски для бэйджей фигур (::after) — берём те же иконки, красим через currentColor слоя
+  (function setMaskIcons(){
+    const uri = n => `url("data:image/svg+xml,${encodeURIComponent(svgIcon(n, 24))}")`;
+    document.documentElement.style.setProperty('--ic-image', uri('image'));
+    document.documentElement.style.setProperty('--ic-chart', uri('chart'));
+  })();
+  hydrateIcons();
+
   // ── МОДАЛКА: табы ──
   document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
     document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
@@ -791,7 +866,7 @@
       }
       currentText = data.text;
       $('drop').classList.remove('loading');
-      const ocrTag = data.ocr ? ' · 🔎 распознано OCR' : '';
+      const ocrTag = data.ocr ? ' · распознано OCR' : '';
       fname.textContent = `✓ ${file.name} · ${data.pages} стр., ${data.chars.toLocaleString('ru')} символов${ocrTag}`;
       ingestPromise = ingestPdf(file);   // фоном тянем spatial-манифест; analyze его дождётся
     } catch (err) {
@@ -910,7 +985,7 @@
       cropEl.onclick = openCropZoom;
       snip.appendChild(cropEl);
       snip.previousElementSibling.textContent = 'Фрагмент источника';
-      $('nodeSnippetHint').style.display = '';            // подсказка: можно увеличить/прокрутить
+      $('nodeSnippetHint').style.display = 'inline-flex'; // подсказка: можно увеличить/прокрутить
       $('nodeSnippetWrap').style.display = '';
     } else if (frag) {
       snip.textContent = frag;
@@ -1014,8 +1089,9 @@
     if (!node) return;
     const nid = node.id;
     const btn = $('nodeInfographic');
-    const prev = btn.textContent;
-    btn.disabled = true; btn.textContent = '🎨 Генерирую…';
+    const lbl = btn.querySelector('.mbtn-lbl');
+    const prev = lbl ? lbl.textContent : '';
+    btn.disabled = true; if (lbl) lbl.textContent = 'Генерирую…';
     showInfographicLoading();                 // сразу открываем лайтбокс с анимацией
     try {
       const res = await fetch(API_BASE + '/api/infographic', {
@@ -1044,7 +1120,7 @@
     } catch (err) {
       showInfographicError('Нет связи с сервером Lumina.');
     } finally {
-      btn.disabled = false; btn.textContent = prev;
+      btn.disabled = false; if (lbl) lbl.textContent = prev;
     }
   }
   $('nodeInfographic').onclick = makeInfographic;
@@ -1098,8 +1174,9 @@
   // показать кнопку «Открыть инфографику», если для узла она уже создана в этой сессии
   function updateInfographicButtons(node){
     const has = node && infographicCache[node.id];
-    $('nodeInfographicView').style.display = has ? '' : 'none';
-    $('nodeInfographic').textContent = has ? '🎨 Пересоздать' : '🎨 Инфографика';
+    $('nodeInfographicView').style.display = has ? 'inline-flex' : 'none';
+    const lbl = $('nodeInfographic').querySelector('.mbtn-lbl');
+    if (lbl) lbl.textContent = has ? 'Пересоздать' : 'Инфографика';
   }
 
   // лайтбокс: анимированный загрузчик, пока генерируется картинка (не «зависло»)
@@ -1122,7 +1199,7 @@
     box.innerHTML =
       '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;min-width:min(80vw,360px);'
       + 'padding:32px;text-align:center;color:#fca5a5;font:600 14px Inter,sans-serif;">'
-      + '<div style="font-size:30px;">⚠️</div><div>' + esc(msg) + '</div></div>';
+      + '<div style="color:#f87171;">' + svgIcon('alert', 30) + '</div><div>' + esc(msg) + '</div></div>';
     $('figOverlay').classList.add('open');
   }
 
@@ -1146,9 +1223,10 @@
     }
     const fname = (data.title || 'infographic').replace(/[^\wа-яё\- ]/gi, '').slice(0, 60) + '.png';
     const dl = document.createElement('button');
-    dl.textContent = '⬇ Скачать PNG';
-    dl.style.cssText = 'flex:1;padding:9px 14px;font:600 13px Inter,sans-serif;border:none;'
-      + 'background:#7C6FF0;color:#fff;border-radius:8px;cursor:pointer;';
+    dl.innerHTML = svgIcon('download', 15) + '<span>Скачать PNG</span>';
+    dl.style.cssText = 'flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;'
+      + 'padding:9px 14px;font:600 13px Inter,sans-serif;border:none;'
+      + 'background:var(--accent);color:#fff;border-radius:8px;cursor:pointer;';
     // скачиваем через blob — работает и для data URL, и для signed URL из Storage
     // (у cross-origin ссылки атрибут download игнорируется, поэтому не полагаемся на него)
     dl.onclick = async () => {
@@ -1788,9 +1866,9 @@
     const refs = (lastManifest.links || []).filter(l => l.figure === fid).map(l => l.block);
     if (refs.length) {
       const btn = document.createElement('button');
-      btn.textContent = '↑ Где упоминается в тексте';
-      btn.style.cssText = 'display:block;width:100%;padding:9px 14px;font:600 13px Inter,sans-serif;'
-        + 'background:#7C6FF0;color:#fff;border:none;cursor:pointer;';
+      btn.innerHTML = svgIcon('arrowUp', 15) + '<span>Где упоминается в тексте</span>';
+      btn.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:7px;width:100%;'
+        + 'padding:9px 14px;font:600 13px Inter,sans-serif;background:var(--accent);color:#fff;border:none;cursor:pointer;';
       btn.onclick = (e) => {
         e.stopPropagation();
         $('figOverlay').classList.remove('open');
@@ -2168,7 +2246,7 @@
         const d = new Date(c.updated_at).toLocaleString('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
         return `<div class="chat-item" onclick="openChat('${c.id}')">
           <div class="body"><div class="t">${esc(c.title || 'Без названия')}</div><div class="d">${esc(d)}</div></div>
-          <button class="del" title="Удалить чат" onclick="event.stopPropagation(); deleteChat('${c.id}')">🗑</button>
+          <button class="del" title="Удалить чат" onclick="event.stopPropagation(); deleteChat('${c.id}')">${svgIcon('trash', 15)}</button>
         </div>`;
       }).join('');
     } catch (e) { console.error('loadChatList', e); list.innerHTML = '<div class="chats-empty">Не удалось загрузить</div>'; }
