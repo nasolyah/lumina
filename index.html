@@ -288,6 +288,18 @@
   @media (max-width: 900px) { .features-grid { grid-template-columns: 1fr 1fr; } .feat-card.center-last { grid-column: auto; } }
   @media (max-width: 580px) { .features-grid { grid-template-columns: 1fr; } }
 
+  /* ── МОБИЛЬНАЯ АДАПТАЦИЯ (навигация, отступы, размер заголовка) ── */
+  @media (max-width: 720px) {
+    nav { padding: 14px 18px; }
+    .nav-links { display: none; }             /* пункты меню прячем — есть заметная CTA-кнопка */
+    .section { padding: 64px 20px; }
+    .hero { min-height: 82vh; padding: 48px 20px 64px; }
+    h1 { font-size: clamp(2rem, 8.5vw, 3.2rem); }
+  }
+  @media (max-width: 380px) {
+    .btn-primary { padding: 9px 15px; font-size: 0.82rem; }
+  }
+
   .feat-card {
     background: var(--card);
     border: 1px solid var(--border);

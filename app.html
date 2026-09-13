@@ -502,6 +502,56 @@
   .src-label { display: inline-flex; align-items: center; gap: 6px; font-family: 'Inter', sans-serif;
     font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px; }
   .src-label .ic { color: currentColor; }
+
+  /* ── МОБИЛЬНАЯ АДАПТАЦИЯ ─────────────────────────────────────────────────── */
+  .mobile-nav { display: none; }
+  @media (max-width: 820px) {
+    /* одна колонка: топбар · рабочая область · нижняя навигация (карта/чат) */
+    .app {
+      grid-template-columns: 1fr;
+      grid-template-rows: 54px 1fr 56px;
+      grid-template-areas: "top" "main" "nav";
+      height: 100dvh;
+    }
+    .stage, .chat { grid-area: main; min-height: 0; }
+    .chat { border-left: none; }
+    /* показываем ровно одну панель; по умолчанию — карта */
+    .app:not([data-m="chat"]) .chat  { display: none; }
+    .app[data-m="chat"]      .stage { display: none; }
+
+    .mobile-nav {
+      grid-area: nav; display: flex; border-top: 1px solid var(--border);
+      background: rgba(18,18,42,0.92); backdrop-filter: blur(12px); z-index: 25;
+    }
+    .mobile-nav button {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 3px; min-height: 44px; background: none; border: none; cursor: pointer;
+      color: var(--muted); font-family: 'Inter', sans-serif; font-weight: 600; font-size: 11px;
+    }
+    .mobile-nav button.active { color: var(--glow); }
+
+    /* топбар компактный: иконки без подписей, без статов и фидбэка */
+    .topbar { gap: 10px; padding: 0 12px; }
+    .topbar .stats { display: none; }
+    #feedbackBtn { display: none; }
+    /* !important — перебиваем инлайновый font-size на кнопках; svg-иконка задана в px и остаётся */
+    .topbar .btn.ghost { padding: 8px !important; font-size: 0 !important; }
+    .brand { font-size: 17px; }
+    .user-chip #userName { display: none; }
+
+    /* модалки: почти на весь экран, меньше паддинги */
+    .overlay { padding: 10px; }
+    .modal { padding: 20px; border-radius: 16px; max-height: calc(100dvh - 20px); }
+    .modal h2 { font-size: 19px; }
+    .legend { display: none; }                              /* мало места — прячем легенду */
+    .view-toggle { top: 10px; }
+
+    /* сообщения чуть шире, крупнее тап-таргеты композера */
+    .msg { max-width: 96%; }
+    .composer { padding: 12px; }
+    .composer textarea { font-size: 16px; }                 /* 16px — iOS не зумит при фокусе */
+    #nodeChatInput, #srcText, .modal textarea { font-size: 16px; }
+  }
 </style>
 </head>
 <body>
@@ -591,6 +641,12 @@
         </div>
       </div>
     </aside>
+
+    <!-- МОБИЛЬНАЯ НАВИГАЦИЯ: переключение Карта / Чат (только на узких экранах) -->
+    <nav class="mobile-nav" id="mobileNav">
+      <button data-pane="stage" class="active"><span class="ic" data-ic="network" data-sz="20"></span>Карта</button>
+      <button data-pane="chat"><span class="ic" data-ic="message" data-sz="20"></span>Чат</button>
+    </nav>
   </div>
 
   <!-- SOURCE MODAL -->
@@ -2017,6 +2073,54 @@
     gZoom = newZoom;
     applyGraphTransform();
   }, { passive: false });
+
+  // ── ТАЧ-ЖЕСТЫ (мобильные): 1 палец = пан, 2 пальца = пинч-зум к центру щипка ──
+  let _tMode = null, _tPan = null, _pinchD0 = 0, _pinchZ0 = 1, _pinchMid = null;
+  const _dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  graphEl.addEventListener('touchstart', e => {
+    gDragMoved = false;
+    if (e.touches.length === 1) {
+      _tMode = 'pan';
+      _tPan = { x: e.touches[0].clientX, y: e.touches[0].clientY, px: gPanX, py: gPanY };
+    } else if (e.touches.length === 2) {
+      _tMode = 'pinch'; _pinchD0 = _dist(e.touches) || 1; _pinchZ0 = gZoom;
+      const r = graphEl.getBoundingClientRect();
+      _pinchMid = { x: (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left,
+                    y: (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top };
+    }
+  }, { passive: true });
+  graphEl.addEventListener('touchmove', e => {
+    if (_tMode === 'pan' && e.touches.length === 1) {
+      const t = e.touches[0];
+      const dx = t.clientX - _tPan.x, dy = t.clientY - _tPan.y;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) gDragMoved = true;
+      gPanX = _tPan.px + dx; gPanY = _tPan.py + dy;
+      applyGraphTransform(); e.preventDefault();
+    } else if (_tMode === 'pinch' && e.touches.length === 2) {
+      gDragMoved = true;
+      const newZoom = Math.min(2.5, Math.max(0.25, _pinchZ0 * (_dist(e.touches) / _pinchD0)));
+      gPanX = _pinchMid.x - (_pinchMid.x - gPanX) * (newZoom / gZoom);
+      gPanY = _pinchMid.y - (_pinchMid.y - gPanY) * (newZoom / gZoom);
+      gZoom = newZoom;
+      applyGraphTransform(); e.preventDefault();
+    }
+  }, { passive: false });
+  graphEl.addEventListener('touchend', e => { if (e.touches.length === 0) _tMode = null; });
+
+  // ── МОБИЛЬНАЯ НАВИГАЦИЯ: переключение панелей Карта / Чат ──
+  const appEl = document.querySelector('.app');
+  $('mobileNav').querySelectorAll('button').forEach(btn => {
+    btn.onclick = () => {
+      const pane = btn.dataset.pane;
+      appEl.dataset.m = pane;
+      $('mobileNav').querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+      // граф мог отрисоваться, пока .stage был display:none (нулевой размер) → перемеряем
+      if (pane === 'stage') {
+        if (currentView === 'spatial' && lastManifest) renderSpatial(lastManifest);
+        else if (lastGraph) renderGraph(lastGraph, /*preserveView*/true);
+      }
+    };
+  });
 
   // клик по карточке дерева → модалка с деталями (делегирование; игнорируем клик,
   // если это был конец перетаскивания холста, а не настоящий клик по карточке)
