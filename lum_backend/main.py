@@ -129,6 +129,11 @@ class AskNodeRequest(BaseModel):
     graph_state: Optional[dict] = None
 
 
+class InfographicRequest(BaseModel):
+    node_title: str = Field(..., min_length=1, description="Заголовок раздела/узла")
+    node_text: str = Field("", description="Текст раздела — основа для инфографики")
+
+
 class FeedbackRequest(BaseModel):
     rating: int = 0
     text: str = ""
@@ -163,6 +168,7 @@ def health():
         "embed_model": core.EMBED_MODEL,
         "ocr_enabled": core.OCR_ENABLED,
         "ocr_max_pages": core.OCR_MAX_PAGES,
+        "image_model": core.IMAGE_MODEL,
         "chunk_size": core.CHUNK_SIZE,
         "top_k": core.TOP_K,
         # лимиты — чтобы их можно было проверить на живом сервере
@@ -298,6 +304,22 @@ def ask_node(req: AskNodeRequest, user: dict = Depends(require_user)):
         raise
     except Exception:
         logger.exception("ask_node: непредвиденная ошибка")
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка")
+
+
+@app.post("/api/infographic")
+def infographic(req: InfographicRequest, user: dict = Depends(require_user)):
+    """
+    Генерирует картинку-инфографику по тексту раздела через image-модель Gemini
+    (тот же ключ). Возвращает {image (data URL), title, points}. Требует JWT.
+    """
+    try:
+        return core.generate_infographic(node_title=req.node_title, node_text=req.node_text)
+    except core.PipelineError as e:
+        logger.error("infographic: PipelineError: %s", e)
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("infographic: непредвиденная ошибка")
         raise HTTPException(status_code=500, detail="Внутренняя ошибка")
 
 

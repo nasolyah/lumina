@@ -594,8 +594,12 @@
         style="position:absolute;top:12px;right:14px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:#94A3B8;font-size:20px;line-height:1;cursor:pointer;border-radius:8px;">✕</button>
       <h2 id="nodeTitle" style="margin-right:28px;"></h2>
       <div class="sub" id="nodeType"></div>
-      <button id="nodeToDoc" title="Показать эту ветку в документе"
-        style="display:none;margin-top:10px;padding:6px 14px;font-size:12.5px;background:rgba(124,111,240,.15);border:1px solid #7C6FF0;color:#c4b5fd;border-radius:8px;cursor:pointer;">📄 Открыть в документе</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+        <button id="nodeToDoc" title="Показать эту ветку в документе"
+          style="display:none;padding:6px 14px;font-size:12.5px;background:rgba(124,111,240,.15);border:1px solid #7C6FF0;color:#c4b5fd;border-radius:8px;cursor:pointer;">📄 Открыть в документе</button>
+        <button id="nodeInfographic" title="Сгенерировать инфографику по этому разделу"
+          style="padding:6px 14px;font-size:12.5px;background:rgba(34,211,238,.12);border:1px solid #22D3EE;color:#a5f3fc;border-radius:8px;cursor:pointer;">🎨 Инфографика</button>
+      </div>
       <div id="nodeDesc" style="margin:10px 0 0;color:#CBD5E1;font-size:14px;line-height:1.5;"></div>
       <div id="nodeSnippetWrap" style="margin-top:16px;">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#7C6FF0;margin-bottom:6px;">Фрагмент источника</div>
@@ -996,6 +1000,60 @@
   }
   $('nodeChatSend').onclick = sendNodeQuestion;
   $('nodeChatInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); sendNodeQuestion(); } });
+
+  // ── ИНФОГРАФИКА: картинка по разделу (image-модель Gemini) ──
+  async function makeInfographic(){
+    if (!nodeModalId || !lastGraph) return;
+    const node = lastGraph.nodes.find(x => x.id === nodeModalId);
+    if (!node) return;
+    const btn = $('nodeInfographic');
+    const prev = btn.textContent;
+    btn.disabled = true; btn.textContent = '🎨 Генерирую…';
+    try {
+      const res = await fetch(API_BASE + '/api/infographic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
+        body: JSON.stringify({
+          node_title: node.name || '',
+          node_text: (node.full || node.excerpt || node.snippet || node.name || ''),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) showGate('Сессия истекла — войдите снова.');
+        toast(data.detail || 'Не удалось создать инфографику.');
+        return;
+      }
+      openInfographic(data);
+    } catch (err) {
+      toast('Нет связи с сервером Lumina.');
+    } finally {
+      btn.disabled = false; btn.textContent = prev;
+    }
+  }
+  $('nodeInfographic').onclick = makeInfographic;
+
+  // показать сгенерированную инфографику в лайтбоксе + кнопка скачивания
+  function openInfographic(data){
+    const box = $('figBox');
+    box.innerHTML = ''; box.style.background = '#0e0e2a';
+    const img = document.createElement('img');
+    img.src = data.image;
+    img.alt = data.title || 'Инфографика';
+    img.style.cssText = 'display:block;max-width:100%;height:auto;';
+    box.appendChild(img);
+    const bar = document.createElement('div');
+    bar.style.cssText = 'display:flex;gap:8px;padding:8px;background:#0e0e2a;';
+    const dl = document.createElement('a');
+    dl.textContent = '⬇ Скачать PNG';
+    dl.href = data.image;
+    dl.download = (data.title || 'infographic').replace(/[^\wа-яё\- ]/gi, '').slice(0, 60) + '.png';
+    dl.style.cssText = 'flex:1;text-align:center;padding:9px 14px;font:600 13px Inter,sans-serif;'
+      + 'background:#7C6FF0;color:#fff;border-radius:8px;text-decoration:none;';
+    bar.appendChild(dl);
+    box.appendChild(bar);
+    $('figOverlay').classList.add('open');
+  }
 
   function closeNodeModal(){ nodeOverlay.classList.remove('open'); nodeModalId = null; }
   $('nodeClose').onclick = closeNodeModal;

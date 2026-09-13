@@ -54,6 +54,11 @@ POWER_MODEL  = os.environ.get("POWER_MODEL", "gemini-flash-latest")
 EMBED_MODEL     = os.environ.get("EMBED_MODEL", "text-embedding-004")
 EMBED_URL_TMPL  = "https://generativelanguage.googleapis.com/v1beta/models/{model}:batchEmbedContents"
 
+# Модель генерации картинок (инфографика по разделу). Через тот же ключ Gemini,
+# endpoint generateContent с responseModalities:["IMAGE"]. Имя вынесено в env — если
+# Google переименует «Nano Banana», меняем переменную, не код.
+IMAGE_MODEL     = os.environ.get("IMAGE_MODEL", "gemini-2.5-flash-image")
+
 # Потолок выходных токенов одного ответа модели.
 MAX_OUTPUT_TOKENS = int(os.environ.get("MAX_OUTPUT_TOKENS", "2048"))
 
@@ -249,6 +254,114 @@ def ocr_pdf(raw: bytes, max_pages: int | None = None) -> str:
         except PipelineError as e:
             logger.warning("ocr_pdf: страница %d пропущена: %s", i, e)
     return "\n\n".join(out).strip()
+
+
+# ─── ИНФОГРАФИКА (Gemini image) ───────────────────────────────────────────────
+#
+# Кнопка в модалке раздела → картинка-инфографика по тексту раздела. Два шага
+# ЧЕРЕЗ ТОТ ЖЕ КЛЮЧ: (1) дешёвая текст-модель дистиллирует раздел в короткий бриф
+# (заголовок + 3-6 фактов ДОСЛОВНО из текста, без выдумок); (2) image-модель рисует
+# по бифу в палитре Lumina. Числа/подписи на картинке модель может исказить —
+# бриф отдаём фронту рядом, чтобы фактам можно было доверять из брифа, не с картинки.
+
+_INFOGRAPHIC_BRIEF_SYSTEM = """Ты готовишь КРАТКИЙ бриф для инфографики по разделу документа.
+На основе ТОЛЬКО приведённого текста извлеки:
+- "title": короткий заголовок инфографики (до 6 слов),
+- "points": 3-6 самых важных тезисов/цифр/фактов, каждый ОЧЕНЬ коротко (до 8 слов);
+  бери реальные числа и названия ИЗ ТЕКСТА, ничего не выдумывай.
+Если содержательного текста мало — меньше пунктов (но хотя бы 2).
+Отвечай ТОЛЬКО валидным JSON без markdown:
+{"title":"...","points":["...","..."]}"""
+
+
+def _compose_image_prompt(title: str, points: list[str], lang_hint: str = "оригинала документа") -> str:
+    """Собирает текстовый промпт для image-модели из брифа + фирменный стиль Lumina."""
+    pts = "\n".join(f"- {p}" for p in points if (p or "").strip())
+    return (
+        "Create a clean, modern FLAT INFOGRAPHIC poster (vector style, no photorealism).\n"
+        "Visual style: dark deep-indigo background (#0e0e2a), accents in violet (#7C6FF0) "
+        "and cyan (#22D3EE), soft glow, generous spacing, clear visual hierarchy, simple line "
+        "icons, rounded cards. Elegant sans-serif. Portrait orientation.\n"
+        f"Headline: «{title}».\n"
+        "Show these key points as distinct visual blocks (icon + short label + number where present):\n"
+        f"{pts}\n"
+        f"Keep any text SHORT and legible, in the language of the source ({lang_hint}). "
+        "Do not invent facts or numbers beyond the points above."
+    )
+
+
+def build_infographic_brief(node_title: str, node_text: str) -> dict:
+    """Текст раздела → {title, points[]} (дешёвая модель, строго по тексту)."""
+    src = (node_text or "").strip() or node_title
+    raw = call_llm(
+        system=_INFOGRAPHIC_BRIEF_SYSTEM,
+        user=f"РАЗДЕЛ «{node_title}»:\n{src}",
+        model=LIGHT_MODEL,
+        max_tokens=600,
+    )
+    try:
+        data = parse_json_lenient(raw)
+    except json.JSONDecodeError:
+        data = {}
+    title = (data.get("title") or node_title or "Инфографика").strip()[:80]
+    points = [str(p).strip()[:80] for p in (data.get("points") or []) if str(p).strip()][:6]
+    if not points:
+        # мягкая деградация: хоть что-то отдать image-модели
+        points = [node_title.strip()[:80]] if node_title.strip() else ["Обзор раздела"]
+    return {"title": title, "points": points}
+
+
+def _gemini_generate_image(prompt: str, model: str | None = None, retries: int = RETRIES) -> tuple[str, str]:
+    """Один вызов image-модели Gemini: текстовый промпт → (base64-данные, mime).
+    Бросает PipelineError с понятным текстом, если ключ не имеет доступа к image-модели."""
+    if not GEMINI_API_KEY:
+        raise PipelineError("GEMINI_API_KEY не задан в переменных окружения")
+    model = model or IMAGE_MODEL
+    url = GEMINI_URL_TMPL.format(model=model)
+    # TEXT+IMAGE — самое совместимое сочетание (принимают и preview, и GA-версии
+    # image-модели); из ответа берём именно image-часть (inlineData).
+    body = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
+    }
+    for attempt in range(retries + 1):
+        try:
+            r = requests.post(url, params={"key": GEMINI_API_KEY},
+                              headers={"Content-Type": "application/json"}, json=body, timeout=120)
+            data = r.json()
+            if not r.ok:
+                msg = data.get("error", {}).get("message", "API error")
+                if (r.status_code in (429,) or r.status_code >= 500) and attempt < retries:
+                    time.sleep(6.0 + attempt * 4.0)
+                    continue
+                raise PipelineError(f"Gemini image ({model}): {msg}")
+            cands = data.get("candidates") or []
+            parts = ((cands[0].get("content") or {}) if cands else {}).get("parts") or []
+            for p in parts:
+                blob = p.get("inlineData") or p.get("inline_data")
+                if blob and blob.get("data"):
+                    return blob["data"], (blob.get("mimeType") or blob.get("mime_type") or "image/png")
+            raise PipelineError(f"Gemini image ({model}) не вернул картинку")
+        except requests.exceptions.Timeout:
+            if attempt < retries:
+                time.sleep(4 + attempt * 3)
+                continue
+            raise PipelineError(f"Таймаут генерации картинки Gemini (модель {model})")
+        except requests.exceptions.RequestException as e:
+            raise PipelineError(f"Сетевая ошибка генерации картинки Gemini: {e}")
+    raise PipelineError(f"Генерация картинки: все попытки к модели {model} исчерпаны")
+
+
+def generate_infographic(node_title: str, node_text: str) -> dict:
+    """Инфографика-картинка по разделу. Возвращает {image (data URL), title, points}."""
+    brief = build_infographic_brief(node_title, node_text)
+    prompt = _compose_image_prompt(brief["title"], brief["points"])
+    b64, mime = _gemini_generate_image(prompt)
+    return {
+        "image": f"data:{mime};base64,{b64}",
+        "title": brief["title"],
+        "points": brief["points"],
+    }
 
 
 # ─── ЭМБЕДДИНГИ ──────────────────────────────────────────────────────────────
