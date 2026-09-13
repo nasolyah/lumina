@@ -1920,12 +1920,13 @@
     return bestScore > 0 ? best : null;
   }
 
-  // клик по блоку в «Документе»: найти узел → граф → развернуть → фокус → модалка
-  // (в модалке фрагмент показываем ВЫРЕЗКОЙ этого блока — см. openNodeModal)
+  // клик по строке в «Документе»: найти её раздел → граф → развернуть → фокус → модалка.
+  // Показываем вырезку ВСЕГО раздела (логические границы провёл ИИ), а не одной строки —
+  // строки теперь атомарные, одиночная вырезка была бы обрезком (см. sectionCropEl).
   function jumpFromBlock(bid){
     const b = lastManifest && lastManifest.blocks.find(x => x.id === bid);
     if (!b) return;
-    // точно: узел, чьи block_ids содержат этот блок (План 3). Фолбэк — матчинг по словам.
+    // точно: узел, чьи block_ids содержат эту строку (План 3). Фолбэк — матчинг по словам.
     const node = (lastGraph && lastGraph.nodes.find(n => (n.block_ids || []).includes(bid)))
               || matchBlockToNode(b.text);
     if (!node) return;
@@ -1933,7 +1934,7 @@
     setView('graph');                     // рендерит lastGraph с развёрнутыми предками
     requestAnimationFrame(() => {         // ждём отрисовку DOM графа
       focusNodeById(node.id);
-      openNodeModal(node, b);             // b → фрагмент как картинка-вырезка
+      openNodeModal(node);                // без блока → вырезка всего раздела (union строк)
     });
   }
 

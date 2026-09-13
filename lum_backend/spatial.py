@@ -28,6 +28,13 @@ MAX_PAGES = int(os.environ.get("SPATIAL_MAX_PAGES", "30"))
 RENDER_DPI = int(os.environ.get("SPATIAL_DPI", "130"))
 WEBP_QUALITY = int(os.environ.get("SPATIAL_WEBP_QUALITY", "80"))
 
+# Построчный режим: геометрия НЕ склеивает строки в блоки, а выдаёт строки-атомы
+# (каждая с координатами). Логические границы абзацев/разделов проводит LLM
+# (build_sections_from_blocks), а вырезка режется по объединению координат строк,
+# которые модель отнесла к разделу. Так границы — «по смыслу», а не по геометрии,
+# но при этом остаются привязанными к пикселям страницы. Откат: SPATIAL_LINE_LEVEL=0.
+LINE_LEVEL = os.environ.get("SPATIAL_LINE_LEVEL", "1") != "0"
+
 # ── ПРАВИЛО ПРИВАТНОСТИ (контракт для Этапа 2) ────────────────────────────────
 # ИНВАРИАНТ: пиксели документа (рендер страниц, вырезанные фигуры/чарты/формулы)
 # НИКОГДА не уходят в LLM. В модель может идти только текст блоков и подписи фигур.
@@ -146,6 +153,57 @@ def _group_words_into_blocks(words: list[dict]) -> list[dict]:
                       and len(text) < 80 and len(text.split()) <= 7)
         out.append({
             "bbox": [round(x0, 1), round(top, 1), round(x1, 1), round(bottom, 1)],
+            "kind": "heading" if is_heading else "text",
+            "text": text,
+        })
+    return out
+
+
+def _words_to_line_units(words: list[dict]) -> list[dict]:
+    """Слова pdfplumber → СТРОКИ-атомы: каждая строка = отдельная единица с bbox.
+
+    В отличие от _group_words_into_blocks здесь НЕТ склейки строк в блоки по
+    вертикальному разрыву — именно эта склейка тянула соседние колонки/таблицы в
+    один блок и портила вырезку. Границы абзацев/разделов дальше проводит LLM,
+    группируя эти строки (см. build_sections_from_blocks). Текст ДОСЛОВНЫЙ.
+    """
+    if not words:
+        return []
+    words = sorted(words, key=lambda w: (round(w["top"], 1), w["x0"]))
+    lines: list[list[dict]] = []
+    cur: list[dict] = []
+    for w in words:
+        if cur and abs(w["top"] - cur[-1]["top"]) > _LINE_TOL:
+            lines.append(cur); cur = []
+        cur.append(w)
+    if cur:
+        lines.append(cur)
+
+    def line_box(ln):
+        return (min(x["x0"] for x in ln), min(x["top"] for x in ln),
+                max(x["x1"] for x in ln), max(x["bottom"] for x in ln))
+
+    def line_text(ln):
+        return " ".join(x["text"] for x in sorted(ln, key=lambda x: x["x0"]))
+
+    lines = [ln for ln in lines if not _is_noise(line_text(ln))]
+    if not lines:
+        return []
+    boxes = [line_box(ln) for ln in lines]
+    heights = [b[3] - b[1] for b in boxes]
+    median_h = sorted(heights)[len(heights) // 2] if heights else 0
+
+    out = []
+    for ln, b, h in zip(lines, boxes, heights):
+        text = line_text(ln).strip()
+        if not text:
+            continue
+        # заголовок: короткая строка с крупными глифами (немного слов) — тот же
+        # критерий, что раньше, но применён к отдельной строке.
+        is_heading = bool(median_h and h >= median_h * 1.15
+                          and len(text) < 80 and len(text.split()) <= 7)
+        out.append({
+            "bbox": [round(b[0], 1), round(b[1], 1), round(b[2], 1), round(b[3], 1)],
             "kind": "heading" if is_heading else "text",
             "text": text,
         })
@@ -367,7 +425,8 @@ def build_manifest(pdf_bytes: bytes, image_sink=None) -> dict:
                 img = sink(pi, webp)
                 words = page.extract_words(use_text_flow=False, keep_blank_chars=False)
                 kept = 0
-                for b in _group_words_into_blocks(words):
+                units = _words_to_line_units(words) if LINE_LEVEL else _group_words_into_blocks(words)
+                for b in units:
                     if _is_noise(b["text"]):
                         continue   # пунктир/линии для ответа — не кладём в манифест
                     b.update({"id": f"b{order}", "page": pi, "order": order})
