@@ -284,18 +284,28 @@ _INFOGRAPHIC_BRIEF_SYSTEM = """Ты готовишь КРАТКИЙ бриф д�
 
 
 def _compose_image_prompt(title: str, points: list[str], lang_hint: str = "оригинала документа") -> str:
-    """Собирает текстовый промпт для image-модели из брифа + фирменный стиль Lumina."""
+    """Собирает текстовый промпт для image-модели из брифа.
+
+    Палитру НЕ навязываем — просим модель подобрать под тему; упор на официальный,
+    профессиональный, издательского качества результат."""
     pts = "\n".join(f"- {p}" for p in points if (p or "").strip())
     return (
-        "Create a clean, modern FLAT INFOGRAPHIC poster (vector style, no photorealism).\n"
-        "Visual style: dark deep-indigo background (#0e0e2a), accents in violet (#7C6FF0) "
-        "and cyan (#22D3EE), soft glow, generous spacing, clear visual hierarchy, simple line "
-        "icons, rounded cards. Elegant sans-serif. Portrait orientation.\n"
+        "Design a PROFESSIONAL, PUBLICATION-GRADE INFOGRAPHIC — the kind used in official "
+        "business reports, consulting decks and editorial pages. Clean modern flat vector style "
+        "(no photorealism, no clip-art, no random decorative clutter).\n"
+        "Quality bar: precise alignment to an invisible grid, balanced composition, clear visual "
+        "hierarchy (one strong headline, then sections), consistent iconography (simple line/solid "
+        "icons), generous white space, crisp legible typography, professional data-viz where numbers "
+        "appear (neat bars/stat cards/steps). Polished and trustworthy, not playful.\n"
+        "COLOR: choose the color palette that BEST FITS THIS SPECIFIC TOPIC and reads as official and "
+        "professional (a restrained, cohesive scheme — 2-3 main colors plus neutrals); do NOT default "
+        "to purple. Ensure strong contrast and accessibility.\n"
         f"Headline: «{title}».\n"
-        "Show these key points as distinct visual blocks (icon + short label + number where present):\n"
+        "Present these key points as distinct, well-organized visual blocks (icon + short label + the "
+        "number/stat where present):\n"
         f"{pts}\n"
-        f"Keep any text SHORT and legible, in the language of the source ({lang_hint}). "
-        "Do not invent facts or numbers beyond the points above."
+        f"Keep all text SHORT, correctly spelled and legible, in the language of the source "
+        f"({lang_hint}). Use ONLY the facts and numbers above — do not invent anything."
     )
 
 

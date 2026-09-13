@@ -599,6 +599,8 @@
           style="display:none;padding:6px 14px;font-size:12.5px;background:rgba(124,111,240,.15);border:1px solid #7C6FF0;color:#c4b5fd;border-radius:8px;cursor:pointer;">📄 Открыть в документе</button>
         <button id="nodeInfographic" title="Сгенерировать инфографику по этому разделу"
           style="padding:6px 14px;font-size:12.5px;background:rgba(34,211,238,.12);border:1px solid #22D3EE;color:#a5f3fc;border-radius:8px;cursor:pointer;">🎨 Инфографика</button>
+        <button id="nodeInfographicView" title="Открыть уже созданную инфографику"
+          style="display:none;padding:6px 14px;font-size:12.5px;background:rgba(52,211,153,.12);border:1px solid #34D399;color:#a7f3d0;border-radius:8px;cursor:pointer;">🖼 Открыть инфографику</button>
       </div>
       <div id="nodeDesc" style="margin:10px 0 0;color:#CBD5E1;font-size:14px;line-height:1.5;"></div>
       <div id="nodeSnippetWrap" style="margin-top:16px;">
@@ -727,6 +729,7 @@
   let chatMessages = [];     // переписка для сохранения: {role:'user',text} | {role:'bot',answer,explanation}
   let lastGraph = null;      // последний отрисованный граф/mindmap (для восстановления)
   let graphState = null;     // слепок концепт-графа с 1-го analyze → повторные вопросы через /api/ask (без пересборки)
+  let infographicCache = {}; // node_id → {image,title,points,model} за сессию (переоткрыть/скачать после закрытия модалки)
   let collapsed = new Set(); // id узлов со СВЁРНУТЫМИ детьми (сохраняется между перерисовками)
   let lastManifest = null;   // манифест spatial-режима (страницы+блоки); MVP: только в сессии
   let ingestPromise = null;  // промис фонового ingest PDF (analyze ждёт его до сборки графа)
@@ -928,6 +931,7 @@
     // 3) саб-чат: показываем прошлые Q&A этой ветки (узлы-ответы, что уже висят на ней)
     renderNodeChat(n.id);
     $('nodeChatInput').value = '';
+    updateInfographicButtons(n);   // если инфографика уже создана в сессии — показать «Открыть»
     nodeOverlay.classList.add('open');
   }
 
@@ -1006,9 +1010,11 @@
     if (!nodeModalId || !lastGraph) return;
     const node = lastGraph.nodes.find(x => x.id === nodeModalId);
     if (!node) return;
+    const nid = node.id;
     const btn = $('nodeInfographic');
     const prev = btn.textContent;
     btn.disabled = true; btn.textContent = '🎨 Генерирую…';
+    showInfographicLoading();                 // сразу открываем лайтбокс с анимацией
     try {
       const res = await fetch(API_BASE + '/api/infographic', {
         method: 'POST',
@@ -1021,17 +1027,54 @@
       const data = await res.json();
       if (!res.ok) {
         if (res.status === 401) showGate('Сессия истекла — войдите снова.');
-        toast(data.detail || 'Не удалось создать инфографику.');
+        showInfographicError(data.detail || 'Не удалось создать инфографику.');
         return;
       }
+      infographicCache[nid] = data;           // кэш за сессию → переоткрыть/скачать позже
+      updateInfographicButtons(node);
       openInfographic(data);
     } catch (err) {
-      toast('Нет связи с сервером Lumina.');
+      showInfographicError('Нет связи с сервером Lumina.');
     } finally {
       btn.disabled = false; btn.textContent = prev;
     }
   }
   $('nodeInfographic').onclick = makeInfographic;
+  $('nodeInfographicView').onclick = () => {
+    const data = nodeModalId && infographicCache[nodeModalId];
+    if (data) openInfographic(data);
+  };
+
+  // показать кнопку «Открыть инфографику», если для узла она уже создана в этой сессии
+  function updateInfographicButtons(node){
+    const has = node && infographicCache[node.id];
+    $('nodeInfographicView').style.display = has ? '' : 'none';
+    $('nodeInfographic').textContent = has ? '🎨 Пересоздать' : '🎨 Инфографика';
+  }
+
+  // лайтбокс: анимированный загрузчик, пока генерируется картинка (не «зависло»)
+  function showInfographicLoading(){
+    const box = $('figBox');
+    box.style.background = '#0e0e2a';
+    box.innerHTML =
+      '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;'
+      + 'gap:16px;min-width:min(80vw,420px);min-height:280px;padding:32px;color:#a5f3fc;font:600 14px Inter,sans-serif;">'
+      + '<div style="width:46px;height:46px;border-radius:50%;border:4px solid rgba(34,211,238,.2);'
+      + 'border-top-color:#22D3EE;animation:dropspin .8s linear infinite;"></div>'
+      + '<div>Генерирую инфографику…</div>'
+      + '<div style="font-weight:400;font-size:12px;color:#64748b;">ИИ рисует картинку по разделу — это занимает несколько секунд</div>'
+      + '</div>';
+    $('figOverlay').classList.add('open');
+  }
+  function showInfographicError(msg){
+    const box = $('figBox');
+    box.style.background = '#0e0e2a';
+    box.innerHTML =
+      '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;min-width:min(80vw,360px);'
+      + 'padding:32px;text-align:center;color:#fca5a5;font:600 14px Inter,sans-serif;">'
+      + '<div style="font-size:30px;">⚠️</div><div>' + esc(msg) + '</div></div>';
+    $('figOverlay').classList.add('open');
+  }
 
   // показать сгенерированную инфографику в лайтбоксе + кнопка скачивания
   function openInfographic(data){
@@ -1124,7 +1167,7 @@
     currentText = text;
 
     // новый источник → новый чат: сбрасываем состояние и переписку
-    currentChatId = null; chatMessages = []; lastGraph = null; graphState = null;
+    currentChatId = null; chatMessages = []; lastGraph = null; graphState = null; infographicCache = {};
     msgs.innerHTML = '';
 
     closeModal();
@@ -2005,7 +2048,7 @@
   $('chatsClose').onclick = closeChatsDrawer;
   chatsBackdrop.onclick = closeChatsDrawer;
   $('newChatBtn').onclick = () => {
-    currentChatId = null; chatMessages = []; lastGraph = null; graphState = null;
+    currentChatId = null; chatMessages = []; lastGraph = null; graphState = null; infographicCache = {};
     resetSourceInputs();
     msgs.innerHTML = '';
     $('stageEmpty').classList.remove('hidden');
@@ -2069,7 +2112,7 @@
       if (error) throw error;
       // если удалили открытый сейчас чат — сбрасываем на пустое состояние
       if (currentChatId === id) {
-        currentChatId = null; chatMessages = []; lastGraph = null; graphState = null;
+        currentChatId = null; chatMessages = []; lastGraph = null; graphState = null; infographicCache = {};
         resetSourceInputs();
         msgs.innerHTML = '';
         $('stageEmpty').classList.remove('hidden');
