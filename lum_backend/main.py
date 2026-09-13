@@ -168,7 +168,9 @@ def health():
         "embed_model": core.EMBED_MODEL,
         "ocr_enabled": core.OCR_ENABLED,
         "ocr_max_pages": core.OCR_MAX_PAGES,
-        "image_model": core.IMAGE_MODEL,
+        "image_model": core.IMAGE_MODEL or "(auto)",
+        "image_model_resolved": core._resolved_image_model,
+        "image_model_candidates": core.IMAGE_MODEL_CANDIDATES,
         "chunk_size": core.CHUNK_SIZE,
         "top_k": core.TOP_K,
         # лимиты — чтобы их можно было проверить на живом сервере

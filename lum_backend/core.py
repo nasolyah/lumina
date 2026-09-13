@@ -55,9 +55,18 @@ EMBED_MODEL     = os.environ.get("EMBED_MODEL", "text-embedding-004")
 EMBED_URL_TMPL  = "https://generativelanguage.googleapis.com/v1beta/models/{model}:batchEmbedContents"
 
 # Модель генерации картинок (инфографика по разделу). Через тот же ключ Gemini,
-# endpoint generateContent с responseModalities:["IMAGE"]. Имя вынесено в env — если
-# Google переименует «Nano Banana», меняем переменную, не код.
-IMAGE_MODEL     = os.environ.get("IMAGE_MODEL", "gemini-2.5-flash-image")
+# endpoint generateContent с responseModalities:[TEXT,IMAGE].
+#   IMAGE_MODEL (env) — если задан, используем СТРОГО его.
+#   Иначе перебираем кандидатов НОВЕЙШИЕ→старые и запоминаем первый рабочий (не 404),
+#   а если все не подошли — спрашиваем у ключа список моделей (ListModels) и берём
+#   любую image-способную. Так «not found» из-за смены имён у Google само лечится.
+IMAGE_MODEL = os.environ.get("IMAGE_MODEL", "")
+IMAGE_MODEL_CANDIDATES = [
+    "gemini-3-pro-image-preview",     # Nano Banana Pro — новейшая, лучшее качество
+    "gemini-2.5-flash-image",         # Nano Banana (GA)
+    "gemini-2.5-flash-image-preview",
+]
+_resolved_image_model: str | None = None   # закэшированное рабочее имя (в рамках процесса)
 
 # Потолок выходных токенов одного ответа модели.
 MAX_OUTPUT_TOKENS = int(os.environ.get("MAX_OUTPUT_TOKENS", "2048"))
@@ -311,12 +320,37 @@ def build_infographic_brief(node_title: str, node_text: str) -> dict:
     return {"title": title, "points": points}
 
 
-def _gemini_generate_image(prompt: str, model: str | None = None, retries: int = RETRIES) -> tuple[str, str]:
+class ImageModelUnavailable(PipelineError):
+    """Модель картинок недоступна (404/не поддерживает generateContent) — сигнал
+    перебрать следующего кандидата, а не падать."""
+
+
+def _list_image_capable_models() -> list[str]:
+    """Спрашивает у ключа список моделей (ListModels) и возвращает имена, которые
+    умеют generateContent и похожи на image-модель. Пусто — если запрос не удался."""
+    try:
+        r = requests.get(
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            params={"key": GEMINI_API_KEY, "pageSize": 200}, timeout=30,
+        )
+        if not r.ok:
+            return []
+        out = []
+        for m in (r.json().get("models") or []):
+            name = (m.get("name") or "").split("/")[-1]
+            methods = m.get("supportedGenerationMethods") or []
+            if name and "image" in name.lower() and "generateContent" in methods:
+                out.append(name)
+        return out
+    except requests.exceptions.RequestException:
+        return []
+
+
+def _gemini_generate_image(prompt: str, model: str, retries: int = RETRIES) -> tuple[str, str]:
     """Один вызов image-модели Gemini: текстовый промпт → (base64-данные, mime).
-    Бросает PipelineError с понятным текстом, если ключ не имеет доступа к image-модели."""
+    404/«not found»/«not supported» → ImageModelUnavailable (перебрать другую)."""
     if not GEMINI_API_KEY:
         raise PipelineError("GEMINI_API_KEY не задан в переменных окружения")
-    model = model or IMAGE_MODEL
     url = GEMINI_URL_TMPL.format(model=model)
     # TEXT+IMAGE — самое совместимое сочетание (принимают и preview, и GA-версии
     # image-модели); из ответа берём именно image-часть (inlineData).
@@ -331,6 +365,10 @@ def _gemini_generate_image(prompt: str, model: str | None = None, retries: int =
             data = r.json()
             if not r.ok:
                 msg = data.get("error", {}).get("message", "API error")
+                # модель не существует/не поддерживает generateContent → сигнал перебрать другую
+                low = msg.lower()
+                if r.status_code == 404 or "not found" in low or "not supported" in low:
+                    raise ImageModelUnavailable(f"Gemini image ({model}): {msg}")
                 if (r.status_code in (429,) or r.status_code >= 500) and attempt < retries:
                     time.sleep(6.0 + attempt * 4.0)
                     continue
@@ -352,15 +390,64 @@ def _gemini_generate_image(prompt: str, model: str | None = None, retries: int =
     raise PipelineError(f"Генерация картинки: все попытки к модели {model} исчерпаны")
 
 
+def _generate_image_autoresolve(prompt: str) -> tuple[str, str, str]:
+    """Рисует картинку, сам подбирая рабочую image-модель. Возвращает (b64, mime, model).
+
+    Порядок: закэшированная рабочая → IMAGE_MODEL (если задан в env, строго он) →
+    кандидаты новейшие→старые → любая image-способная из ListModels. Недоступную
+    (404/not supported) молча пропускаем; запоминаем первую, что реально нарисовала."""
+    global _resolved_image_model
+    if _resolved_image_model:
+        order = [_resolved_image_model]
+    elif IMAGE_MODEL:
+        order = [IMAGE_MODEL]           # явно задан в env — используем только его
+    else:
+        order = list(IMAGE_MODEL_CANDIDATES)
+
+    last_err: Exception | None = None
+    tried = set()
+    def _try(models):
+        nonlocal last_err
+        global _resolved_image_model
+        for m in models:
+            if not m or m in tried:
+                continue
+            tried.add(m)
+            try:
+                b64, mime = _gemini_generate_image(prompt, model=m)
+                _resolved_image_model = m
+                return b64, mime, m
+            except ImageModelUnavailable as e:
+                last_err = e            # модель не подошла — пробуем следующую
+                logger.warning("infographic: модель %s недоступна, пробую другую", m)
+            # прочие ошибки (лимит/сеть/блок) пробрасываем — не нашей моделью проблема
+        return None
+
+    got = _try(order)
+    # если ни один известный кандидат не подошёл и имя не форсировано — спросим у ключа
+    if got is None and not IMAGE_MODEL:
+        discovered = _list_image_capable_models()
+        if discovered:
+            logger.info("infographic: доступные image-модели у ключа: %s", discovered)
+            got = _try(discovered)
+    if got is None:
+        raise last_err or PipelineError(
+            "Ни одна image-модель Gemini недоступна для этого ключа. "
+            "Проверьте доступ к генерации картинок или задайте IMAGE_MODEL."
+        )
+    return got
+
+
 def generate_infographic(node_title: str, node_text: str) -> dict:
-    """Инфографика-картинка по разделу. Возвращает {image (data URL), title, points}."""
+    """Инфографика-картинка по разделу. Возвращает {image (data URL), title, points, model}."""
     brief = build_infographic_brief(node_title, node_text)
     prompt = _compose_image_prompt(brief["title"], brief["points"])
-    b64, mime = _gemini_generate_image(prompt)
+    b64, mime, model = _generate_image_autoresolve(prompt)
     return {
         "image": f"data:{mime};base64,{b64}",
         "title": brief["title"],
         "points": brief["points"],
+        "model": model,
     }
 
 

@@ -1043,7 +1043,14 @@
     img.style.cssText = 'display:block;max-width:100%;height:auto;';
     box.appendChild(img);
     const bar = document.createElement('div');
-    bar.style.cssText = 'display:flex;gap:8px;padding:8px;background:#0e0e2a;';
+    bar.style.cssText = 'display:flex;gap:8px;align-items:center;padding:8px;background:#0e0e2a;';
+    if (data.model) {
+      const tag = document.createElement('span');
+      tag.textContent = data.model;
+      tag.title = 'Модель Gemini, которая нарисовала инфографику';
+      tag.style.cssText = 'font:11px JetBrains Mono,monospace;color:#64748b;';
+      bar.appendChild(tag);
+    }
     const dl = document.createElement('a');
     dl.textContent = '⬇ Скачать PNG';
     dl.href = data.image;
