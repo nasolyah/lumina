@@ -531,12 +531,13 @@
     }
     .mobile-nav button.active { color: var(--glow); }
 
-    /* топбар компактный: иконки без подписей, без статов и фидбэка */
+    /* топбар компактный, НО с подписями (иконки без текста были непонятны):
+       прячем статы, «Фидбэк» и «Новый источник» (последний доступен на пустом
+       экране и в «Мои чаты»→«Новый чат») — так «Мои чаты» помещается с подписью. */
     .topbar { gap: 10px; padding: 0 12px; }
     .topbar .stats { display: none; }
-    #feedbackBtn { display: none; }
-    /* !important — перебиваем инлайновый font-size на кнопках; svg-иконка задана в px и остаётся */
-    .topbar .btn.ghost { padding: 8px !important; font-size: 0 !important; }
+    #feedbackBtn, #newSourceBtn { display: none; }
+    .topbar .btn.ghost { padding: 8px 12px !important; font-size: 13px !important; }
     .brand { font-size: 17px; }
     .user-chip #userName { display: none; }
 
