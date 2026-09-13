@@ -124,6 +124,9 @@ class AskNodeRequest(BaseModel):
     node_title: str = Field(..., min_length=1, description="Заголовок ветки/узла")
     node_text: str = Field("", description="Текст (excerpt/full) этой ветки — контекст ответа")
     question: str = Field(..., min_length=1, description="Вопрос пользователя по этой ветке")
+    # слепок графа (с passages) — чтобы саб-чат заземлялся на весь документ, а не только
+    # на текст выбранной ветки, и НЕ отвечал из общих знаний модели. Опционально.
+    graph_state: Optional[dict] = None
 
 
 class FeedbackRequest(BaseModel):
@@ -158,6 +161,8 @@ def health():
         "light_model": core.LIGHT_MODEL,
         "power_model": core.POWER_MODEL,
         "embed_model": core.EMBED_MODEL,
+        "ocr_enabled": core.OCR_ENABLED,
+        "ocr_max_pages": core.OCR_MAX_PAGES,
         "chunk_size": core.CHUNK_SIZE,
         "top_k": core.TOP_K,
         # лимиты — чтобы их можно было проверить на живом сервере
@@ -272,8 +277,16 @@ def ask_node(req: AskNodeRequest, user: dict = Depends(require_user)):
     модели — не полный пайплайн (быстро/дёшево). Требует валидный Supabase-JWT.
     """
     try:
+        # заземляем на весь документ: топ дословных фрагментов по вопросу (через ключ),
+        # а не только текст ветки — чтобы ответ был по документу, не из памяти модели
+        sources = []
+        gs = req.graph_state or {}
+        passages = gs.get("passages") or []
+        if passages:
+            sources = core.retrieve_passages(passages, req.question, gs.get("real_embed", False))
         node = core.answer_for_node(
-            node_title=req.node_title, node_text=req.node_text, question=req.question
+            node_title=req.node_title, node_text=req.node_text,
+            question=req.question, sources=sources,
         )
         if not node:
             raise HTTPException(status_code=400, detail="Не удалось сформировать ответ по этой ветке.")
@@ -327,13 +340,25 @@ async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(require
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Не удалось разобрать PDF: {type(e).__name__}")
 
+    # Скан без текстового слоя: pdfplumber/pypdf почти ничего не дали (< ~15 симв/стр).
+    # Тогда распознаём страницы через Gemini Vision (OCR). ВАЖНО: тут пиксели уходят
+    # в Gemini осознанно — единственный способ прочитать скан (см. core.ocr_pdf).
+    ocr_used = False
+    if len(text) < max(40, 15 * pages) and core.OCR_ENABLED:
+        try:
+            ocr_text = core.ocr_pdf(raw)
+            if len(ocr_text) > len(text):
+                text, ocr_used = ocr_text, True
+        except core.PipelineError as e:
+            logger.warning("extract: OCR не удался: %s", e)
+
     if not text:
         raise HTTPException(
             status_code=400,
-            detail="Из PDF не удалось извлечь текст — вероятно, это скан без текстового слоя (нужен OCR).",
+            detail="Из PDF не удалось извлечь текст — это скан без текстового слоя, и OCR не дал результата.",
         )
 
-    return {"text": text, "chars": len(text), "pages": pages}
+    return {"text": text, "chars": len(text), "pages": pages, "ocr": ocr_used}
 
 
 # ─── ASYNC INGEST (job + polling) ─────────────────────────────────────────────

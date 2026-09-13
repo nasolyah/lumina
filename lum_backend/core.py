@@ -22,6 +22,7 @@ import json
 import time
 import math
 import os
+import base64
 import logging
 import requests
 
@@ -164,6 +165,90 @@ def call_llm(system: str, user: str, model: str = POWER_MODEL, retries: int = RE
         except requests.exceptions.RequestException as e:
             raise PipelineError(f"Сетевая ошибка при обращении к Gemini: {e}")
     raise PipelineError(f"Все попытки обращения к модели {model} исчерпаны")
+
+
+# ─── OCR СКАНОВ (Gemini Vision) ───────────────────────────────────────────────
+#
+# ВАЖНО — ИСКЛЮЧЕНИЕ ИЗ ПРИВАТНОСТИ: в обычном потоке в LLM уходит ТОЛЬКО текст
+# (см. spatial.blocks_for_llm). OCR — единственное место, где ПИКСЕЛИ страниц
+# ОСОЗНАННО отправляются в Gemini: у скана нет текстового слоя, распознать его
+# иначе нельзя. Включается флагом OCR_VISION (по умолчанию ВКЛ). Для сканов
+# лендинговое обещание приватности перестаёт быть полным — это осознанный выбор.
+
+OCR_ENABLED   = os.environ.get("OCR_VISION", "1") != "0"
+OCR_MAX_PAGES = int(os.environ.get("OCR_MAX_PAGES", "15"))   # синхронный OCR: бережём таймаут Render
+OCR_MODEL     = os.environ.get("OCR_MODEL", POWER_MODEL)
+
+_OCR_SYSTEM = """Ты — точный OCR-движок. Перепиши ВЕСЬ видимый на странице текст ДОСЛОВНО,
+сохраняя естественный порядок чтения (сверху вниз, колонки — по очереди).
+- Таблицы передавай построчно, ячейки разделяй « | ».
+- Заголовки/пункты — с новой строки.
+- НИЧЕГО не добавляй от себя, не переводи, не комментируй, не описывай картинки.
+- Если на странице нет текста — верни пустую строку.
+Только распознанный текст, без markdown-обёрток."""
+
+
+def _gemini_vision_ocr(webp: bytes, model: str, retries: int = RETRIES) -> str:
+    """Один вызов Gemini Vision: картинка страницы → распознанный текст.
+    Пиксели уходят в Gemini осознанно (см. блок выше)."""
+    if not GEMINI_API_KEY:
+        raise PipelineError("GEMINI_API_KEY не задан в переменных окружения")
+    url = GEMINI_URL_TMPL.format(model=model)
+    body = {
+        "system_instruction": {"parts": [{"text": _OCR_SYSTEM}]},
+        "contents": [{"role": "user", "parts": [
+            {"inline_data": {"mime_type": "image/webp", "data": base64.b64encode(webp).decode("ascii")}},
+            {"text": "Перепиши весь текст с этой страницы дословно."},
+        ]}],
+        "generationConfig": {"maxOutputTokens": 4096, "temperature": 0.0},
+    }
+    for attempt in range(retries + 1):
+        try:
+            r = requests.post(url, params={"key": GEMINI_API_KEY},
+                              headers={"Content-Type": "application/json"}, json=body, timeout=90)
+            data = r.json()
+            if not r.ok:
+                msg = data.get("error", {}).get("message", "API error")
+                if (r.status_code in (400, 404, 429) or r.status_code >= 500) and attempt < retries:
+                    time.sleep(6.0 + attempt * 4.0)
+                    continue
+                raise PipelineError(f"Gemini Vision ({model}): {msg}")
+            cands = data.get("candidates") or []
+            if not cands:
+                return ""
+            parts = (cands[0].get("content") or {}).get("parts") or []
+            return "".join(p.get("text", "") for p in parts).strip()
+        except requests.exceptions.Timeout:
+            if attempt < retries:
+                time.sleep(4 + attempt * 3)
+                continue
+            raise PipelineError(f"Таймаут OCR-запроса к Gemini (модель {model})")
+        except requests.exceptions.RequestException as e:
+            raise PipelineError(f"Сетевая ошибка OCR Gemini: {e}")
+    raise PipelineError(f"OCR: все попытки к модели {model} исчерпаны")
+
+
+def ocr_pdf(raw: bytes, max_pages: int | None = None) -> str:
+    """Распознаёт скан PDF (без текстового слоя) через Gemini Vision: рендерит
+    страницы и OCR-ит каждую. Возвращает склеенный текст (или '' если OCR выкл /
+    ничего не распознано). Сбой отдельной страницы не роняет весь документ."""
+    if not OCR_ENABLED:
+        return ""
+    import pypdfium2 as pdfium
+    from spatial import _render_page_webp
+    limit = max_pages or OCR_MAX_PAGES
+    doc = pdfium.PdfDocument(raw)
+    n = min(len(doc), limit)
+    out = []
+    for i in range(n):
+        try:
+            webp, _, _ = _render_page_webp(doc[i])
+            txt = _gemini_vision_ocr(webp, OCR_MODEL)
+            if txt:
+                out.append(txt)
+        except PipelineError as e:
+            logger.warning("ocr_pdf: страница %d пропущена: %s", i, e)
+    return "\n\n".join(out).strip()
 
 
 # ─── ЭМБЕДДИНГИ ──────────────────────────────────────────────────────────────
@@ -817,15 +902,15 @@ def build_sections_from_blocks(blocks: list[dict], in_answer_names: set[str]) ->
 
 # ─── САБ-ЧАТ ПО ВЕТКЕ (вопрос строго по контексту одного узла) ────────────────
 
-_NODE_ANSWER_SYSTEM = """Ты — помощник, который отвечает на вопрос пользователя про раздел
-документа «{node_title}». Фрагмент раздела — это КОНТЕКСТ (то, что читает пользователь),
-а не единственный источник ответа.
-
-Дай прямой, понятный ответ ИМЕННО на заданный вопрос:
-- если ответ есть во фрагменте — опирайся на него;
-- если спрашивают про непонятное слово, термин или понятие — ОБЪЯСНИ его своими знаниями
-  в контексте темы раздела (не отписывайся «в разделе нет информации»);
-- НЕ пересказывай фрагмент вместо ответа — отвечай по сути вопроса.
+_NODE_ANSWER_SYSTEM = """Ты отвечаешь на вопрос пользователя ПО ДОКУМЕНТУ (раздел «{node_title}»).
+ГЛАВНОЕ ПРАВИЛО: отвечай ТОЛЬКО на основе приведённого текста документа (фрагмент раздела
++ дополнительные фрагменты источника). НЕ отвечай из своих общих знаний и НЕ выдумывай —
+только то, что реально есть в тексте документа.
+- Если ответ есть в тексте — дай прямой конкретный ответ по сути вопроса (приведи нужные
+  числа/пункты/факты из текста), не пересказывай фрагмент целиком.
+- Если спрашивают про термин или слово — объясни его ТАК, КАК ОНО УПОТРЕБЛЯЕТСЯ В ДОКУМЕНТЕ.
+- Если в приведённом тексте ответа НЕТ — честно скажи, что в документе это не раскрыто.
+  НЕ заменяй ответ общими знаниями и не сочиняй.
 
 Ответ станет новым узлом ментальной карты, ответвлением от этого раздела.
 Ответь ТОЛЬКО валидным JSON без markdown:
@@ -834,15 +919,23 @@ _NODE_ANSWER_SYSTEM = """Ты — помощник, который отвеча�
   "full":"более полный ответ, 3-6 предложений"}}"""
 
 
-def answer_for_node(node_title: str, node_text: str, question: str) -> dict | None:
-    """Отвечает на вопрос по контексту ОДНОГО узла (раздела). Возвращает
-    {title, excerpt, full} для нового узла-ответвления, либо None при сбое.
-    Один вызов модели — не полный пайплайн (быстро и дёшево)."""
+def answer_for_node(node_title: str, node_text: str, question: str,
+                    sources: list[dict] | None = None) -> dict | None:
+    """Отвечает на вопрос СТРОГО по тексту документа (не из общих знаний модели).
+
+    node_text — фрагмент выбранного раздела (первичный контекст); sources — доп.
+    дословные фрагменты источника (passage-RAG), чтобы ответ нашёлся, даже если он
+    в другом разделе документа. Возвращает {title, excerpt, full} для нового
+    узла-ответвления или None при сбое. Один вызов модели — быстро и дёшево."""
     if not (node_text or "").strip():
         node_text = node_title
+    sources_text = "\n\n".join(
+        f"[{s.get('title') or 'раздел'}]\n{s.get('text','')}" for s in (sources or []) if s.get("text")
+    )
+    extra = f"\n\nДОП. ФРАГМЕНТЫ ИСТОЧНИКА (дословно из документа):\n{sources_text}" if sources_text else ""
     raw = call_llm(
         system=_NODE_ANSWER_SYSTEM.format(node_title=node_title),
-        user=f"ФРАГМЕНТ РАЗДЕЛА «{node_title}»:\n{node_text}\n\nВОПРОС: {question}",
+        user=f"ФРАГМЕНТ РАЗДЕЛА «{node_title}»:\n{node_text}{extra}\n\nВОПРОС: {question}",
         model=POWER_MODEL,
         max_tokens=1200,
     )

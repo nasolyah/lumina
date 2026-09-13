@@ -281,6 +281,9 @@
     width: 100%; max-width: 620px; background: var(--surface);
     border: 1px solid var(--border-lit); border-radius: 20px; padding: 28px;
     box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+    /* высокий контент (саб-чат с длинной перепиской) не должен вылезать за экран —
+       ограничиваем высоту вьюпортом (минус паддинг overlay 24px×2) и скроллим внутри */
+    max-height: calc(100vh - 48px); overflow-y: auto;
   }
   .modal h2 { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 22px; color: var(--white); margin-bottom: 6px; }
   .modal .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
@@ -779,7 +782,8 @@
       }
       currentText = data.text;
       $('drop').classList.remove('loading');
-      fname.textContent = `✓ ${file.name} · ${data.pages} стр., ${data.chars.toLocaleString('ru')} символов`;
+      const ocrTag = data.ocr ? ' · 🔎 распознано OCR' : '';
+      fname.textContent = `✓ ${file.name} · ${data.pages} стр., ${data.chars.toLocaleString('ru')} символов${ocrTag}`;
       ingestPromise = ingestPdf(file);   // фоном тянем spatial-манифест; analyze его дождётся
     } catch (err) {
       $('drop').classList.remove('loading');
@@ -959,6 +963,9 @@
           node_title: parent.name || '',
           node_text: (parent.full || parent.excerpt || parent.snippet || parent.name || ''),
           question: q,
+          // слепок графа с дословными фрагментами → ответ строится по документу
+          // (через ключ Gemini), а не из общих знаний модели
+          graph_state: graphState || undefined,
         }),
       });
       const data = await res.json();
@@ -1736,6 +1743,16 @@
   });
   graphEl.addEventListener('wheel', e => {
     e.preventDefault();
+    // В режиме «Документ»: обычное колесо = ПРОКРУТКА страницы (пан), Ctrl/⌘+колесо = ЗУМ,
+    // как в PDF-вьюерах — иначе высокий документ нельзя листать, только зумить. В графе
+    // (mind-map) колесо по-прежнему = зум к курсору (там прокручивать нечего).
+    const zoomGesture = e.ctrlKey || e.metaKey || currentView !== 'spatial';
+    if (!zoomGesture) {
+      gPanX -= e.deltaX;
+      gPanY -= e.deltaY;
+      applyGraphTransform();
+      return;
+    }
     const rect = graphEl.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
     const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
