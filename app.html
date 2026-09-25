@@ -67,6 +67,7 @@
     --br-5: oklch(0.84 0.12 58);      /* оранжевый #FFB779 */
     --br-6: oklch(0.85 0.085 212);    /* бирюзовый #89DDEE */
     --br-answer: oklch(0.858 0.109 143); /* зелёный: ответ саб-чата */
+    --path: oklch(0.56 0.21 262);        /* путь к ответу: яркий синий (ярче акцента) */
     --scrim:     oklch(0.2 0.03 262 / .38);
     --shadow-lg: 0 1px 2px oklch(0.23 0.035 262 / .06), 0 18px 48px oklch(0.23 0.035 262 / .14);
     --shadow-sm: 0 1px 2px oklch(0.23 0.035 262 / .06), 0 4px 14px oklch(0.23 0.035 262 / .07);
@@ -108,6 +109,7 @@
       --br-5: oklch(0.78 0.11 58);
       --br-6: oklch(0.78 0.08 212);
       --br-answer: oklch(0.79 0.105 143);
+      --path: oklch(0.77 0.14 258);
       --scrim:     rgb(0 0 0 / .55);
       --shadow-lg: 0 1px 2px rgb(0 0 0 / .4), 0 20px 56px rgb(0 0 0 / .5);
       --shadow-sm: 0 1px 2px rgb(0 0 0 / .35), 0 6px 18px rgb(0 0 0 / .3);
@@ -141,6 +143,7 @@
     --br-5: oklch(0.78 0.11 58);
     --br-6: oklch(0.78 0.08 212);
     --br-answer: oklch(0.79 0.105 143);
+    --path: oklch(0.77 0.14 258);
     --scrim:     rgb(0 0 0 / .55);
     --shadow-lg: 0 1px 2px rgb(0 0 0 / .4), 0 20px 56px rgb(0 0 0 / .5);
     --shadow-sm: 0 1px 2px rgb(0 0 0 / .35), 0 6px 18px rgb(0 0 0 / .3);
@@ -277,7 +280,7 @@
   .legend .sws { display: inline-flex; gap: 2px; }   /* по точке на цвет ветки — те же токены, что у узлов */
   .legend .ring {
     width: 11px; height: 11px; border-radius: 50%;
-    border: 2px solid var(--accent);   /* как кольцо узла на пути к ответу */
+    border: 2px solid var(--path);     /* как кольцо узла на пути к ответу */
   }
 
   /* empty state on stage */
@@ -652,6 +655,39 @@
     :root:not([data-theme="light"]) .theme-moon { display: none; }
   }
 
+
+  /* ── ПОЛНЫЙ ЭКРАН («презентация» карты/документа перед классом) ── */
+  .fs-btn { position: absolute; right: 16px; bottom: 16px; z-index: 10;
+    width: 40px; height: 40px; display: grid; place-items: center; cursor: pointer;
+    color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+    background: color-mix(in oklch, var(--surface) 92%, transparent); backdrop-filter: blur(8px);
+    box-shadow: var(--shadow-sm); transition: border-color .15s, color .15s; }
+  .fs-btn:hover { border-color: var(--border-lit); color: var(--accent); }
+  .fs-btn .fs-exit, body.presenting .fs-btn .fs-enter { display: none; }
+  body.presenting .fs-btn .fs-exit { display: block; }
+  /* сцена поверх всего интерфейса; модалки (z 100+) остаются выше */
+  body.presenting .stage { position: fixed; inset: 0; z-index: 60; background: var(--bg); display: block !important; }
+
+  /* ── МОБИЛЬНОЕ МЕНЮ (бургер слева): аккаунт, язык, тема ── */
+  .menu-btn { display: none; }
+  #menuDrawer { left: auto; right: 0; transform: translateX(100%); border-right: none; border-left: 1px solid var(--border); }
+  #menuDrawer.open { transform: translateX(0); }
+  .menu-drawer .menu-user { display: flex; align-items: center; gap: 10px; padding: 16px 18px;
+    border-bottom: 1px solid var(--border); font-size: 14px; font-weight: 600; color: var(--text); }
+  .menu-drawer .menu-user .ava { width: 32px; height: 32px; border-radius: 50%; overflow: hidden; flex: none;
+    display: grid; place-items: center; background: var(--accent); color: var(--on-accent); font-size: 13px; }
+  .menu-drawer .menu-user .ava img { width: 100%; height: 100%; object-fit: cover; }
+  .menu-list { display: flex; flex-direction: column; padding: 8px; gap: 2px; }
+  .menu-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 10px; min-height: 46px;
+    background: none; border: 0; border-radius: 8px; cursor: pointer; text-align: left;
+    color: var(--text); font: 500 15px var(--font-ui); }
+  .menu-row:hover, .menu-row:active { background: var(--accent-soft); }
+  .menu-row .ic { color: var(--muted); display: inline-grid; }
+  .menu-row .val { margin-left: auto; color: var(--muted); font-size: 14px; }
+  .menu-row.danger { color: var(--danger); }
+  .menu-row.danger .ic { color: var(--danger); }
+  .menu-sep { height: 1px; background: var(--border); margin: 6px 10px; }
+
   /* ── МОБИЛЬНАЯ АДАПТАЦИЯ ─────────────────────────────────────────────────── */
   .mobile-nav { display: none; }
   @media (max-width: 820px) {
@@ -691,7 +727,11 @@
     .brand { font-size: 17px; }
     .user-chip #userName { display: none; }
     .lang-btn { padding: 6px 9px; }
-    .theme-btn { margin-left: auto; }   /* тема · язык · (аватар · выйти) — к правому краю */
+    /* слева «Мои чаты», справа бургер (аккаунт · язык · тема) */
+    .menu-btn { display: inline-grid; place-items: center; width: 38px; height: 38px; flex: none; margin-left: auto;
+      border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text); cursor: pointer; }
+    #themeBtn, #langBtn, .topbar .user-chip { display: none !important; }
+    .fs-btn { right: 12px; bottom: 12px; }
 
     /* модалки: почти на весь экран, меньше паддинги */
     .overlay { padding: 10px; }
@@ -744,7 +784,27 @@
         <span id="userName"></span>
         <button class="logout" id="logoutBtn" title="Выйти" data-i18n="top.logout" data-i18n-title="top.logoutTitle">выйти</button>
       </div>
+      <button class="menu-btn" id="menuBtn" type="button" aria-label="Меню" data-i18n-aria="menu.open"><span class="ic" data-ic="menu" data-sz="18"></span></button>
     </header>
+
+    <!-- МОБИЛЬНОЕ МЕНЮ (бургер): аккаунт, язык, тема -->
+    <div class="drawer-backdrop" id="menuBackdrop"></div>
+    <aside class="drawer menu-drawer" id="menuDrawer">
+      <div class="drawer-head">
+        <div class="brand"><span class="mk">lu</span>mina</div>
+        <button class="drawer-close" id="menuClose" aria-label="Закрыть" data-i18n-aria="common.close"><span class="ic" data-ic="close" data-sz="18"></span></button>
+      </div>
+      <div class="menu-user" id="menuUser"><span class="ava" id="menuAva"></span><span id="menuName"></span></div>
+      <div class="menu-list">
+        <button class="menu-row" id="mNew" type="button"><span class="ic" data-ic="plus" data-sz="18"></span><span data-i18n="top.newSource">Новый документ</span></button>
+        <button class="menu-row" id="mFeedback" type="button"><span class="ic" data-ic="message" data-sz="18"></span><span data-i18n="top.feedback">Фидбэк</span></button>
+        <div class="menu-sep"></div>
+        <button class="menu-row" id="mTheme" type="button"><span class="ic" data-ic="moon" data-sz="18"></span><span data-i18n="menu.theme">Тема</span><span class="val" id="mThemeVal"></span></button>
+        <button class="menu-row" id="mLang" type="button"><span class="ic" data-ic="globe" data-sz="18"></span><span data-i18n="menu.lang">Язык</span><span class="val" id="mLangVal"></span></button>
+        <div class="menu-sep" id="mLogoutSep"></div>
+        <button class="menu-row danger" id="mLogout" type="button"><span class="ic" data-ic="logout" data-sz="18"></span><span data-i18n="menu.logout">Выйти</span></button>
+      </div>
+    </aside>
 
     <!-- ПАНЕЛЬ СОХРАНЁННЫХ ЧАТОВ -->
     <div class="drawer-backdrop" id="chatsBackdrop"></div>
@@ -766,6 +826,7 @@
         <p data-i18n="empty.text">Загрузите PDF, презентацию или текст. Lumina разложит документ на разделы, а вы сможете спрашивать о чём угодно и видеть, откуда взят ответ.</p>
         <button class="btn primary" id="emptyCTA" style="flex:none;width:100%;max-width:220px;margin-top:6px;" data-i18n="empty.cta">Загрузить документ</button>
       </div>
+      <button class="fs-btn hidden" id="fsBtn" type="button" title="Во весь экран" aria-label="Во весь экран" data-i18n-title="stage.fs" data-i18n-aria="stage.fs"><span class="ic fs-enter" data-ic="expand" data-sz="18"></span><span class="ic fs-exit" data-ic="shrink" data-sz="18"></span></button>
       <div class="legend hidden" id="legend">
         <div class="item"><span class="sws"><span class="sw" style="background:var(--br-1)"></span><span class="sw" style="background:var(--br-2)"></span><span class="sw" style="background:var(--br-3)"></span><span class="sw" style="background:var(--br-4)"></span></span><span data-i18n="legend.color">цвет = раздел</span></div>
         <div class="item"><span class="sw" style="background:var(--br-answer)"></span><span data-i18n="legend.answer">ответ (саб-чат)</span></div>
@@ -1089,6 +1150,9 @@
       'slide.zoom': 'Нажмите, чтобы увеличить',
       'fig.mentioned': 'Где упоминается в тексте',
       'stats.nodes': 'разделов', 'stats.edges': 'связей', 'stats.words': 'слов',
+      'stage.fs': 'Во весь экран', 'stage.fsExit': 'Выйти из полноэкранного режима',
+      'menu.open': 'Меню', 'menu.theme': 'Тема', 'menu.dark': 'Тёмная', 'menu.light': 'Светлая',
+      'menu.lang': 'Язык', 'menu.langName': 'Русский', 'menu.logout': 'Выйти',
       'user.default': 'Пользователь',
       'chats.empty': 'Пока нет сохранённых чатов',
       'chats.untitled': 'Без названия',
@@ -1217,6 +1281,9 @@
       'slide.zoom': 'Click to enlarge',
       'fig.mentioned': 'Where it’s mentioned in the text',
       'stats.nodes': 'sections', 'stats.edges': 'links', 'stats.words': 'words',
+      'stage.fs': 'Full screen', 'stage.fsExit': 'Exit full screen',
+      'menu.open': 'Menu', 'menu.theme': 'Theme', 'menu.dark': 'Dark', 'menu.light': 'Light',
+      'menu.lang': 'Language', 'menu.langName': 'English', 'menu.logout': 'Sign out',
       'user.default': 'User',
       'chats.empty': 'No saved chats yet',
       'chats.untitled': 'Untitled',
@@ -1335,6 +1402,12 @@
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
     trash:    '<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/>',
     arrowUp:  '<path d="M12 19V5M5 12l7-7 7 7"/>',
+    menu:     '<path d="M4 7h16M4 12h16M4 17h16"/>',
+    expand:   '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>',
+    shrink:   '<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>',
+    moon:     '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+    globe:    '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+    logout:   '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
     spark:    '<path d="M12 2l2.2 7.8L22 12l-7.8 2.2L12 22l-2.2-7.8L2 12l7.8-2.2z"/>',
     network:  '<circle cx="5" cy="6" r="2.2"/><circle cx="19" cy="6" r="2.2"/><circle cx="12" cy="18" r="2.2"/><path d="M6.9 7.2 10.6 16M17.1 7.2 13.4 16M7 6h10"/>',
   };
@@ -1980,7 +2053,7 @@
 
   // ── ГРАФ ──
   function renderGraph(graph, preserveView){
-    $('legend').classList.remove('hidden');
+    $('legend').classList.remove('hidden'); $('fsBtn').classList.remove('hidden');
     $('stageEmpty').classList.add('hidden');   // есть контент — заглушку прячем всегда
     // индекс узлов текущего графа — чтобы клик по узлу работал и на 2-м, 3-м графе
     nodeById = {};
@@ -2115,7 +2188,7 @@
       // жёлтый/циан/зелёный, белым по ним не читается)
       const fg      = isRoot ? 'var(--bg)' : (filled ? 'var(--pill-ink)' : 'var(--text)');
       const fontPx  = isCard ? 12.5 : (isRoot ? 16 : (isBranch ? 14 : 13));
-      const glow    = n.in_answer ? 'box-shadow:0 0 0 2.5px var(--bg), 0 0 0 4.5px var(--accent);' : '';
+      const glow    = n.in_answer ? 'box-shadow:0 0 0 2.5px var(--bg), 0 0 0 4.5px var(--path);' : '';
       const isCollapsed = hasKids && collapsed.has(id);
 
       // Пилюля: только заголовок. excerpt раздела показываем по клику в модалке.
@@ -2190,7 +2263,7 @@
         const y2 = (kr.top + kr.height / 2 - cRect.top) / z;
         // цвет линии = цвет ветки ребёнка; путь ответа подсвечиваем фиолетовым
         const inAns = child.classList.contains('in-answer');
-        const col = inAns ? 'var(--accent)'
+        const col = inAns ? 'var(--path)'
           : (child.dataset.col ? `color-mix(in oklab, ${child.dataset.col} 62%, var(--text))` : 'var(--border-lit)');
         const w   = inAns ? 2.6 : 2;
         const dx  = (x2 - x1) * 0.5;   // горизонтальные «плечи» → S-образная кривая
@@ -2788,7 +2861,7 @@
     }
     el.style.transition = 'box-shadow .15s';
     const prevShadow = el.style.boxShadow;
-    el.style.boxShadow = '0 0 0 3px var(--accent)';
+    el.style.boxShadow = '0 0 0 3px var(--path)';
     setTimeout(() => { el.style.boxShadow = prevShadow; }, 1200);
     return true;
   }
@@ -2916,6 +2989,71 @@
   function openChatsDrawer(){ chatsDrawer.classList.add('open'); chatsBackdrop.classList.add('open'); loadChatList(); }
   function closeChatsDrawer(){ chatsDrawer.classList.remove('open'); chatsBackdrop.classList.remove('open'); }
   $('myChatsBtn').onclick = openChatsDrawer;
+
+  // ── ПОЛНЫЙ ЭКРАН: сцена (карта/документ) на весь экран — «презентация» перед классом.
+  // CSS-режим работает везде (и на iPhone, где нет Fullscreen API для страниц);
+  // где API есть — дополнительно прячем интерфейс браузера.
+  function redrawStage(){
+    requestAnimationFrame(() => {
+      if (document.getElementById('docLinks')) drawDocLinks();
+      else if (document.getElementById('graphLines')) drawConnectors();
+    });
+  }
+  function setPresenting(on){
+    document.body.classList.toggle('presenting', on);
+    const k = on ? 'stage.fsExit' : 'stage.fs';
+    $('fsBtn').title = T(k); $('fsBtn').setAttribute('aria-label', T(k));
+    redrawStage();
+  }
+  const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+  $('fsBtn').onclick = async () => {
+    const on = !document.body.classList.contains('presenting');
+    setPresenting(on);
+    const el = document.documentElement;
+    try {
+      if (on) {
+        if (el.requestFullscreen) await el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      } else if (fsElement()) {
+        (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      }
+    } catch (_) {}
+  };
+  ['fullscreenchange', 'webkitfullscreenchange'].forEach(ev => document.addEventListener(ev, () => {
+    if (!fsElement() && document.body.classList.contains('presenting')) setPresenting(false);
+  }));
+  // Esc без Fullscreen API: выходим из режима, если не открыта модалка (её Esc закрывает сам)
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || !document.body.classList.contains('presenting') || fsElement()) return;
+    if (document.querySelector('.overlay.open, #figOverlay.open')) return;
+    setPresenting(false);
+  }, true);
+
+  // ── МОБИЛЬНОЕ МЕНЮ ──
+  function currentTheme(){
+    return document.documentElement.dataset.theme
+      || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  }
+  function fillMenu(){
+    $('menuAva').innerHTML = $('userAva').innerHTML;
+    $('menuName').textContent = $('userName').textContent;
+    $('menuUser').style.display = $('userChip').classList.contains('show') ? '' : 'none';
+    $('mThemeVal').textContent = T(currentTheme() === 'dark' ? 'menu.dark' : 'menu.light');
+    $('mLangVal').textContent = T('menu.langName');
+    const canLogout = $('userChip').classList.contains('show') && $('logoutBtn').style.display !== 'none';
+    $('mLogout').style.display = canLogout ? '' : 'none';
+    $('mLogoutSep').style.display = canLogout ? '' : 'none';
+  }
+  function openMenu(){ fillMenu(); $('menuDrawer').classList.add('open'); $('menuBackdrop').classList.add('open'); }
+  function closeMenu(){ $('menuDrawer').classList.remove('open'); $('menuBackdrop').classList.remove('open'); }
+  $('menuBtn').onclick = openMenu;
+  $('menuClose').onclick = closeMenu;
+  $('menuBackdrop').onclick = closeMenu;
+  $('mNew').onclick = () => { closeMenu(); $('newSourceBtn').click(); };
+  $('mFeedback').onclick = () => { closeMenu(); $('feedbackBtn').click(); };
+  $('mTheme').onclick = () => { $('themeBtn').click(); fillMenu(); };
+  $('mLang').onclick = () => { $('langBtn').click(); fillMenu(); };
+  $('mLogout').onclick = () => { closeMenu(); $('logoutBtn').click(); };
   $('chatsClose').onclick = closeChatsDrawer;
   chatsBackdrop.onclick = closeChatsDrawer;
   $('newChatBtn').onclick = () => {
@@ -2923,7 +3061,7 @@
     resetSourceInputs();
     msgs.innerHTML = '';
     $('stageEmpty').classList.remove('hidden');
-    $('graph').innerHTML = ''; $('legend').classList.add('hidden');
+    $('graph').innerHTML = ''; $('legend').classList.add('hidden'); $('fsBtn').classList.add('hidden');
     $('stats').innerHTML = '';
     closeChatsDrawer();
     openModal();   // сразу предложить загрузить источник
@@ -2997,7 +3135,7 @@
         resetSourceInputs();
         msgs.innerHTML = '';
         $('stageEmpty').classList.remove('hidden');
-        $('graph').innerHTML = ''; $('legend').classList.add('hidden');
+        $('graph').innerHTML = ''; $('legend').classList.add('hidden'); $('fsBtn').classList.add('hidden');
         $('stats').innerHTML = '';
       }
       loadChatList();
