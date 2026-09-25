@@ -202,10 +202,10 @@
      не может (в отличие от vis-network, где высоту карточек надо было угадывать). */
   .tree-forest { --h-gap: 90px; display: flex; flex-direction: column; gap: 40px; width: max-content; }
   .tnode-wrap { display: flex; flex-direction: row; align-items: center; gap: var(--h-gap); position: relative; }
-  /* Узлы — «пилюли» (как в NotebookLM): только заголовок, сильное скругление,
+  /* Узлы — плашки-маркеры: только заголовок, сдержанное скругление 8px,
      компактно. Полный текст раздела открывается по клику в модалке. */
   .tnode {
-    flex: none; cursor: pointer; border-radius: 999px; padding: 9px 16px;
+    flex: none; cursor: pointer; border-radius: 8px; padding: 9px 16px;
     max-width: 240px; font-family: var(--font-ui); position: relative; z-index: 1;
     transition: transform .15s, box-shadow .15s;
   }
@@ -253,14 +253,14 @@
     align-items: center; justify-content: center; background: rgba(5,5,15,.8); backdrop-filter: blur(4px); }
   #figOverlay.open { display: flex; }
   #figOverlay .fig-box { max-width: 92vw; max-height: 88vh; overflow: auto;
-    border-radius: 10px; box-shadow: 0 12px 60px rgba(0,0,0,.6); }
+    border-radius: 8px; box-shadow: 0 12px 60px rgba(0,0,0,.6); }
   /* Переключатель Граф/Документ */
   .view-toggle { position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
     z-index: 10; display: flex; gap: 2px; padding: 3px;
     background: color-mix(in oklch, var(--surface) 92%, transparent); backdrop-filter: blur(8px);
-    border: 1px solid var(--border); border-radius: 999px; }
+    border: 1px solid var(--border); border-radius: 8px; }
   .vt-btn { border: none; background: transparent; color: var(--muted); cursor: pointer;
-    font: 600 12px var(--font-ui); padding: 6px 16px; border-radius: 999px; transition: .12s; }
+    font: 600 12px var(--font-ui); padding: 6px 16px; border-radius: 5px; transition: .12s; }
   .vt-btn.active { background: var(--accent); color: var(--on-accent); }
 
   /* legend */
@@ -269,7 +269,7 @@
     display: flex; flex-wrap: wrap; gap: 6px 14px;
     padding: 10px 14px; max-width: 320px;
     background: color-mix(in oklch, var(--surface) 92%, transparent); backdrop-filter: blur(8px);
-    border: 1px solid var(--border); border-radius: 12px;
+    border: 1px solid var(--border); border-radius: 8px;
     font-size: 11px; color: var(--muted);
   }
   .legend .item { display: flex; align-items: center; gap: 6px; }
@@ -292,7 +292,7 @@
   }
   .stage-empty p { color: var(--muted); max-width: 380px; line-height: 1.6; font-size: 14px; }
   .stage-empty .glyph {
-    width: 72px; height: 72px; border-radius: 20px;
+    width: 72px; height: 72px; border-radius: 12px;
     display: grid; place-items: center;
     background: var(--surface);
     border: 1px solid var(--border);
@@ -317,23 +317,23 @@
   .chat-head .intent {
     margin-left: auto; font-size: 11px; font-family: var(--font-ui); font-variant-numeric: tabular-nums;
     color: var(--glow); padding: 3px 8px; border: 1px solid var(--border);
-    border-radius: 999px; opacity: 0; transition: opacity .3s;
+    border-radius: 6px; opacity: 0; transition: opacity .3s;
   }
   .chat-head .intent.show { opacity: 1; }
 
   .messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; min-height: 0; }
   .messages::-webkit-scrollbar { width: 8px; }
-  .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+  .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
 
   .msg { max-width: 92%; line-height: 1.55; font-size: 14px; }
   .msg.user {
     align-self: flex-end; background: var(--accent); color: var(--on-accent);
-    padding: 10px 14px; border-radius: 14px 14px 4px 14px;
+    padding: 10px 14px; border-radius: 10px 10px 4px 10px;
   }
   .msg.bot { align-self: flex-start; color: var(--text); }
   .msg.bot .answer {
     background: var(--card); border: 1px solid var(--border);
-    padding: 14px 16px; border-radius: 4px 14px 14px 14px;
+    padding: 14px 16px; border-radius: 4px 10px 10px 10px;
   }
   .msg.bot .answer h4 {
     font-family: var(--font-display); font-size: 14px; color: var(--white);
@@ -350,7 +350,7 @@
   /* path chips: which nodes led to the answer */
   .path { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
   .chip {
-    font-size: 11px; padding: 4px 9px; border-radius: 999px;
+    font-size: 11px; padding: 4px 9px; border-radius: 6px;
     border: 1px solid var(--border-lit); color: var(--glow);
     background: var(--accent-soft); cursor: pointer;
     transition: background .2s;
@@ -367,7 +367,7 @@
   .composer { border-top: 1px solid var(--border); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
   .composer textarea {
     width: 100%; resize: none; min-height: 46px; max-height: 120px;
-    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
     color: var(--text); padding: 12px 14px; font-family: inherit; font-size: 14px;
     outline: none; transition: border-color .2s;
   }
@@ -375,7 +375,7 @@
   .composer .row { display: flex; gap: 8px; }
   .btn {
     font-family: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
-    border: none; border-radius: 12px; padding: 11px 16px; transition: transform .1s, opacity .2s;
+    border: none; border-radius: 8px; padding: 11px 16px; transition: transform .1s, opacity .2s;
     display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   }
   .btn:active { transform: translateY(1px); }
@@ -394,7 +394,7 @@
   .overlay.open { display: flex; }
   .modal {
     width: 100%; max-width: 620px; background: var(--surface);
-    border: 1px solid var(--border-lit); border-radius: 20px; padding: 28px;
+    border: 1px solid var(--border-lit); border-radius: 12px; padding: 28px;
     box-shadow: var(--shadow-lg);
     /* высокий контент (саб-чат с длинной перепиской) не должен вылезать за экран —
        ограничиваем высоту вьюпортом (минус паддинг overlay 24px×2) и скроллим внутри */
@@ -404,19 +404,19 @@
   .modal .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
   .tabs { display: flex; gap: 6px; margin-bottom: 16px; }
   .tab {
-    flex: 1; text-align: center; padding: 9px; border-radius: 10px; cursor: pointer;
+    flex: 1; text-align: center; padding: 9px; border-radius: 8px; cursor: pointer;
     font-size: 13px; font-weight: 600; color: var(--muted);
     background: var(--card); border: 1px solid var(--border); transition: .2s;
   }
   .tab.active { color: var(--white); border-color: var(--border-lit); background: var(--surface); box-shadow: var(--shadow-sm); }
   .modal textarea {
     width: 100%; min-height: 200px; resize: vertical;
-    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
     color: var(--text); padding: 14px; font-family: inherit; font-size: 14px; line-height: 1.6; outline: none;
   }
   .modal textarea:focus { border-color: var(--border-lit); }
   .drop {
-    min-height: 200px; border: 1.5px dashed var(--border-lit); border-radius: 12px;
+    min-height: 200px; border: 1.5px dashed var(--border-lit); border-radius: 8px;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
     color: var(--muted); text-align: center; padding: 24px; cursor: pointer; transition: .2s;
   }
@@ -443,7 +443,7 @@
   .toast {
     position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(calc(100% + 40px));
     background: var(--card); border: 1px solid var(--warn); color: var(--text);
-    padding: 12px 18px; border-radius: 12px; font-size: 13px; z-index: 200;
+    padding: 12px 18px; border-radius: 8px; font-size: 13px; z-index: 200;
     transition: transform .3s; max-width: 90vw;
   }
   .toast.show { transform: translateX(-50%) translateY(0); }
@@ -460,11 +460,11 @@
   .gate-card {
     width: 100%; max-width: 420px; text-align: center;
     background: var(--surface); border: 1px solid var(--border-lit);
-    border-radius: 22px; padding: 40px 32px;
+    border-radius: 12px; padding: 40px 32px;
     box-shadow: var(--shadow-lg);
   }
   .gate-mark {
-    width: 60px; height: 60px; margin: 0 auto 18px; border-radius: 18px;
+    width: 60px; height: 60px; margin: 0 auto 18px; border-radius: 10px;
     display: grid; place-items: center; font-size: 30px;
     background: var(--marker); color: var(--pill-ink) !important;
     border: 1px solid var(--border-lit); color: var(--glow);
@@ -476,7 +476,7 @@
   .gate-card p { color: var(--muted); font-size: 14px; line-height: 1.6; margin-bottom: 26px; }
   .google-btn {
     width: 100%; display: flex; align-items: center; justify-content: center; gap: 12px;
-    background: var(--surface); color: var(--text); border: 1px solid var(--border-lit); border-radius: 12px;
+    background: var(--surface); color: var(--text); border: 1px solid var(--border-lit); border-radius: 8px;
     padding: 14px 20px; font-family: inherit; font-weight: 600; font-size: 15px;
     cursor: pointer; transition: transform .1s, box-shadow .2s;
   }
@@ -492,7 +492,7 @@
     display: none; align-items: center; gap: 8px;
     font-size: 12px; color: var(--text);
     padding: 6px 8px 6px 6px; border: 1px solid var(--border);
-    border-radius: 999px; background: var(--card);
+    border-radius: 6px; background: var(--card);
   }
   .user-chip.show { display: inline-flex; }
   .user-chip img, .user-chip .ava {
@@ -525,7 +525,7 @@
   .drawer-head h3 { margin: 0; font-size: 16px; }
   .drawer-close { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1; }
   .chats-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
-  .chat-item { padding: 10px 12px; border-radius: 8px; cursor: pointer; border: 1px solid transparent;
+  .chat-item { padding: 10px 12px; border-radius: 6px; cursor: pointer; border: 1px solid transparent;
                display: flex; align-items: center; gap: 8px; }
   .chat-item:hover { background: var(--accent-soft); border-color: var(--border); }
   .chat-item .body { flex: 1; min-width: 0; }
@@ -540,7 +540,7 @@
 
   /* ── FEEDBACK ── */
   .fb-btn {
-    background: none; border: 1px solid var(--border); border-radius: 10px;
+    background: none; border: 1px solid var(--border); border-radius: 8px;
     color: var(--muted); font-family: inherit; font-size: 13px; font-weight: 500;
     padding: 7px 14px; cursor: pointer; transition: .2s;
     display: flex; align-items: center; gap: 6px;
@@ -554,7 +554,7 @@
   .fb-overlay.open { display: flex; }
   .fb-modal {
     width: 100%; max-width: 480px; background: var(--surface);
-    border: 1px solid var(--border-lit); border-radius: 20px; padding: 28px;
+    border: 1px solid var(--border-lit); border-radius: 12px; padding: 28px;
     box-shadow: var(--shadow-lg);
   }
   .fb-modal h2 {
@@ -564,7 +564,7 @@
   .fb-modal .sub { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
   .fb-modal textarea {
     width: 100%; min-height: 140px; resize: vertical;
-    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
     color: var(--text); padding: 14px; font-family: inherit; font-size: 14px;
     line-height: 1.6; outline: none;
   }
@@ -592,7 +592,7 @@
   .mbtn {
     padding: 7px 13px; font-family: var(--font-ui); font-weight: 600; font-size: 12.5px;
     color: var(--text); background: var(--surface);
-    border: 1px solid var(--border); border-radius: 9px; cursor: pointer;
+    border: 1px solid var(--border); border-radius: 7px; cursor: pointer;
     transition: border-color .18s, background .18s, color .18s;
   }
   .mbtn:hover:not(:disabled) { border-color: var(--border-lit); background: var(--accent-soft); color: var(--white); }
@@ -602,14 +602,14 @@
   /* ── КНОПКА-ИКОНКА (закрытие модалок/дровера) ── */
   .icon-btn {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 32px; height: 32px; border-radius: 9px; border: 1px solid transparent;
+    width: 32px; height: 32px; border-radius: 7px; border: 1px solid transparent;
     background: transparent; color: var(--muted); cursor: pointer; transition: background .18s, color .18s;
   }
   .icon-btn:hover { background: color-mix(in oklch, var(--text) 7%, transparent); color: var(--text); }
   .modal-close { position: absolute; top: 14px; right: 14px; }
 
   /* фрагмент/справка: полная рамка + тонкая заливка (без цветного side-stripe) */
-  .src-box { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+  .src-box { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px;
     background: var(--card); color: var(--text); font-size: 13.5px; line-height: 1.55; }
 
   /* ── Карточки слайдов (презентации) ── */
@@ -617,7 +617,7 @@
   .slide-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 8px; }
   .slide-num { flex: none; font-family: var(--font-ui); font-weight: 600; font-size: 10.5px;
     letter-spacing: .06em; text-transform: uppercase; color: var(--glow);
-    padding: 2px 8px; border: 1px solid var(--border-lit); border-radius: 999px; }
+    padding: 2px 8px; border: 1px solid var(--border-lit); border-radius: 6px; }
   .slide-title { font-family: var(--font-ui); font-weight: 700; font-size: 14.5px; line-height: 1.35; color: var(--white); }
   .slide-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
   .slide-items li { position: relative; padding-left: 15px; font-size: 13.5px; line-height: 1.5; color: var(--text); }
@@ -628,7 +628,7 @@
   .slide-items li.nested { color: var(--text-2); }
   .slide-imgs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .slide-imgs img { height: 124px; max-width: 100%; object-fit: contain; background: #fff; cursor: zoom-in;
-    border-radius: 8px; border: 1px solid var(--border); transition: border-color .18s; }
+    border-radius: 6px; border: 1px solid var(--border); transition: border-color .18s; }
   .slide-imgs img:hover { border-color: var(--border-lit); }
 
   .src-box.cyan { border-color: var(--border); background: var(--card); }
@@ -641,7 +641,7 @@
   .lang-btn {
     font-family: var(--font-ui); font-weight: 600; font-size: 12px; letter-spacing: .04em;
     color: var(--muted); background: transparent; border: 1px solid var(--border);
-    border-radius: 999px; padding: 6px 10px; cursor: pointer; transition: color .18s, border-color .18s;
+    border-radius: 6px; padding: 6px 10px; cursor: pointer; transition: color .18s, border-color .18s;
   }
   .lang-btn:hover { color: var(--text); border-color: var(--border-lit); }
   .theme-btn { display: inline-flex; align-items: center; justify-content: center; padding: 6px 8px; }
@@ -695,7 +695,7 @@
 
     /* модалки: почти на весь экран, меньше паддинги */
     .overlay { padding: 10px; }
-    .modal { padding: 20px; border-radius: 16px; max-height: calc(100dvh - 20px); }
+    .modal { padding: 20px; border-radius: 12px; max-height: calc(100dvh - 20px); }
     .modal h2 { font-size: 19px; }
     .legend { display: none; }                              /* мало места — прячем легенду */
     .view-toggle { top: 10px; }
@@ -866,7 +866,7 @@
         <div id="nodeChatMsgs" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
         <div style="display:flex;gap:8px;">
           <input id="nodeChatInput" type="text" data-i18n-ph="node.askPlaceholder" placeholder="Вопрос по этому разделу…"
-            style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:13.5px;outline:none;">
+            style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-size:13.5px;outline:none;">
           <button id="nodeChatSend" class="btn primary" style="flex:none;padding:10px 18px;" data-i18n="chat.ask">Спросить</button>
         </div>
         <div style="font-size:11px;color:var(--muted);margin-top:8px;" data-i18n="node.askNote">Ответ добавится в граф отдельной веткой от этого узла.</div>
@@ -881,7 +881,7 @@
       <div style="color:var(--glow);margin-bottom:10px;"><span class="ic" data-ic="spark" data-sz="34"></span></div>
       <h2 style="margin:0 0 8px;" data-i18n="pay.title">Бесплатные документы закончились</h2>
       <div class="sub" id="paywallText" style="margin-bottom:18px;" data-i18n="pay.text">Вы разобрали все 5 бесплатных документов.</div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:18px;text-align:left;font-size:13.5px;color:var(--text-2);line-height:1.6;" data-i18n="pay.offer">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:18px;text-align:left;font-size:13.5px;color:var(--text-2);line-height:1.6;" data-i18n="pay.offer">
         Хотите продолжить без ограничений? Напишите нам, и мы откроем доступ к Pro за $5 в месяц.
       </div>
       <a class="btn primary" style="display:block;text-align:center;padding:12px 20px;box-sizing:border-box;text-decoration:none;"
@@ -1064,7 +1064,7 @@
       'node.world': 'Кратко о понятии',
       'node.askTitle': 'Спросить по этой ветке',
       'node.askPlaceholder': 'Вопрос по этому разделу…',
-      'node.askNote': 'Ответ добавится в граф отдельной веткой от этого узла.',
+      'node.askNote': 'Ответ добавится в граф отдельной веткой от этого раздела.',
       'node.failed': 'Не получилось: ',
       'node.errorGeneric': 'ошибка',
       'info.failed': 'Не удалось создать инфографику.',
@@ -1088,7 +1088,7 @@
       'slide.label': 'Слайд {n}',
       'slide.zoom': 'Нажмите, чтобы увеличить',
       'fig.mentioned': 'Где упоминается в тексте',
-      'stats.nodes': 'узлов', 'stats.edges': 'связей', 'stats.words': 'слов',
+      'stats.nodes': 'разделов', 'stats.edges': 'связей', 'stats.words': 'слов',
       'user.default': 'Пользователь',
       'chats.empty': 'Пока нет сохранённых чатов',
       'chats.untitled': 'Без названия',
@@ -1192,7 +1192,7 @@
       'node.world': 'In brief',
       'node.askTitle': 'Ask about this branch',
       'node.askPlaceholder': 'A question about this section…',
-      'node.askNote': 'The answer will be added to the map as a new branch from this node.',
+      'node.askNote': 'The answer will be added to the map as a new branch from this section.',
       'node.failed': 'Something went wrong: ',
       'node.errorGeneric': 'error',
       'info.failed': 'Could not create the infographic.',
@@ -1216,7 +1216,7 @@
       'slide.label': 'Slide {n}',
       'slide.zoom': 'Click to enlarge',
       'fig.mentioned': 'Where it’s mentioned in the text',
-      'stats.nodes': 'nodes', 'stats.edges': 'links', 'stats.words': 'words',
+      'stats.nodes': 'sections', 'stats.edges': 'links', 'stats.words': 'words',
       'user.default': 'User',
       'chats.empty': 'No saved chats yet',
       'chats.untitled': 'Untitled',
@@ -1588,9 +1588,9 @@
       .filter(n => n && n.type === 'answer');
     for (const a of answers) {
       if (a.question) box.insertAdjacentHTML('beforeend',
-        `<div style="align-self:flex-end;background:var(--accent);color:var(--on-accent);border-radius:10px 10px 2px 10px;padding:7px 11px;font-size:13px;max-width:85%;">${esc(a.question)}</div>`);
+        `<div style="align-self:flex-end;background:var(--accent);color:var(--on-accent);border-radius:8px 8px 2px 8px;padding:7px 11px;font-size:13px;max-width:85%;">${esc(a.question)}</div>`);
       box.insertAdjacentHTML('beforeend',
-        `<div style="align-self:flex-start;background:color-mix(in oklch, var(--ok) 10%, var(--surface));border:1px solid color-mix(in oklch, var(--ok) 35%, var(--border));color:var(--text);border-radius:10px 10px 10px 2px;padding:8px 12px;font-size:13px;max-width:90%;"><b style="color:var(--ok);">${esc(a.name)}</b><br>${esc(a.full || a.excerpt || '')}</div>`);
+        `<div style="align-self:flex-start;background:color-mix(in oklch, var(--ok) 10%, var(--surface));border:1px solid color-mix(in oklch, var(--ok) 35%, var(--border));color:var(--text);border-radius:8px 8px 8px 2px;padding:8px 12px;font-size:13px;max-width:90%;"><b style="color:var(--ok);">${esc(a.name)}</b><br>${esc(a.full || a.excerpt || '')}</div>`);
     }
   }
 
@@ -1605,7 +1605,7 @@
     btn.disabled = true; input.disabled = true; btn.textContent = '…';
     // показать вопрос сразу
     $('nodeChatMsgs').insertAdjacentHTML('beforeend',
-      `<div style="align-self:flex-end;background:var(--accent);color:var(--on-accent);border-radius:10px 10px 2px 10px;padding:7px 11px;font-size:13px;max-width:85%;">${esc(q)}</div>`);
+      `<div style="align-self:flex-end;background:var(--accent);color:var(--on-accent);border-radius:8px 8px 2px 8px;padding:7px 11px;font-size:13px;max-width:85%;">${esc(q)}</div>`);
     try {
       const res = await fetch(API_BASE + '/api/ask-node', {
         method: 'POST',
@@ -1793,7 +1793,7 @@
     dl.innerHTML = svgIcon('download', 15) + '<span>' + esc(T('info.download')) + '</span>';
     dl.style.cssText = 'flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;'
       + 'padding:9px 14px;font:600 13px var(--font-ui);border:none;'
-      + 'background:var(--accent);color:var(--on-accent);border-radius:8px;cursor:pointer;';
+      + 'background:var(--accent);color:var(--on-accent);border-radius:6px;cursor:pointer;';
     // скачиваем через blob — работает и для data URL, и для signed URL из Storage
     // (у cross-origin ссылки атрибут download игнорируется, поэтому не полагаемся на него)
     dl.onclick = async () => {
