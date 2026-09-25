@@ -5,6 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lumina — рабочее пространство</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%236C63FF%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23A78BFA%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%228%22%20fill%3D%22%230A0A1A%22%2F%3E%3Cpath%20d%3D%22M16%205l2.6%208.4L27%2016l-8.4%202.6L16%2027l-2.6-8.4L5%2016l8.4-2.6z%22%20fill%3D%22url(%23g)%22%2F%3E%3C%2Fsvg%3E">
+<script>
+  // Язык версии сайта: ?lang= → сохранённый выбор (общий с лендингом) → язык браузера
+  // (ru → русская версия, иначе английская). Ставим ДО отрисовки, чтобы английская
+  // версия не мигала русским текстом (body скрыт, пока applyI18n не отработает).
+  window.__LANG = (function () {
+    try {
+      var q = new URLSearchParams(location.search).get('lang');
+      if (q === 'ru' || q === 'en') { localStorage.setItem('lumina_lang', q); return q; }
+      var s = localStorage.getItem('lumina_lang');
+      if (s === 'ru' || s === 'en') return s;
+    } catch (e) {}
+    var l = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+    return String(l).toLowerCase().indexOf('ru') === 0 ? 'ru' : 'en';
+  })();
+  document.documentElement.lang = window.__LANG;
+  if (window.__LANG !== 'ru') {
+    document.documentElement.classList.add('i18n-pending');
+    setTimeout(function () { document.documentElement.classList.remove('i18n-pending'); }, 2500); // страховка
+  }
+</script>
+<style>html.i18n-pending body { visibility: hidden; }</style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -504,6 +525,15 @@
     font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px; }
   .src-label .ic { color: currentColor; }
 
+
+  /* ── ПЕРЕКЛЮЧАТЕЛЬ ЯЗЫКА (RU/EN) ── */
+  .lang-btn {
+    font-family: 'Inter', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: .04em;
+    color: var(--muted); background: transparent; border: 1px solid var(--border);
+    border-radius: 999px; padding: 6px 10px; cursor: pointer; transition: color .18s, border-color .18s;
+  }
+  .lang-btn:hover { color: var(--text); border-color: var(--border-lit); }
+
   /* ── МОБИЛЬНАЯ АДАПТАЦИЯ ─────────────────────────────────────────────────── */
   .mobile-nav { display: none; }
   @media (max-width: 820px) {
@@ -534,13 +564,15 @@
     /* топбар компактный, НО с подписями (иконки без текста были непонятны):
        прячем статы, «Фидбэк» и «Новый источник» (последний доступен на пустом
        экране и в «Мои чаты»→«Новый чат») — так «Мои чаты» помещается с подписью. */
-    .topbar { gap: 10px; padding: 0 12px; }
+    .topbar { gap: 8px; padding: 0 10px; }
+    .topbar .btn, .topbar .logout, .lang-btn { white-space: nowrap; }   /* подписи не переносим (EN длиннее) */
+    .user-chip { gap: 6px; padding: 5px 7px 5px 5px; }
     .topbar .stats { display: none; }
     #feedbackBtn, #newSourceBtn { display: none; }
     .topbar .btn.ghost { padding: 8px 12px !important; font-size: 13px !important; }
     .brand { font-size: 17px; }
     .user-chip #userName { display: none; }
-    .user-chip { margin-left: auto; }   /* аватар · выйти — к правому краю */
+    .lang-btn { margin-left: auto; padding: 6px 9px; }   /* язык + (аватар · выйти) — к правому краю */
 
     /* модалки: почти на весь экран, меньше паддинги */
     .overlay { padding: 10px; }
@@ -562,8 +594,8 @@
   <div class="gate show" id="authGate">
     <div class="gate-card">
       <div class="gate-mark"><span class="ic" data-ic="spark" data-sz="28"></span></div>
-      <h1>Вход в Lumina</h1>
-      <p>Войдите, чтобы построить граф знаний и задавать вопросы своим источникам.</p>
+      <h1 data-i18n="gate.title">Вход в Lumina</h1>
+      <p data-i18n="gate.text">Войдите, чтобы построить граф знаний и задавать вопросы своим источникам.</p>
       <button class="google-btn" id="googleSignIn">
         <svg class="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -571,10 +603,10 @@
           <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
           <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
         </svg>
-        Войти через Google
+        <span data-i18n="gate.google">Войти через Google</span>
       </button>
       <div class="gate-err" id="gateErr"></div>
-      <div class="gate-note">Продолжая, вы соглашаетесь с Условиями использования и Политикой конфиденциальности.</div>
+      <div class="gate-note" data-i18n="gate.note">Продолжая, вы соглашаетесь с Условиями использования и Политикой конфиденциальности.</div>
     </div>
   </div>
 
@@ -582,14 +614,15 @@
     <!-- TOPBAR -->
     <header class="topbar">
       <div class="brand"><span class="dot"></span> Lumina</div>
-      <button class="btn ghost" id="myChatsBtn" style="padding:8px 14px;font-size:13px;"><span class="ic" data-ic="list" data-sz="16"></span>Мои чаты</button>
-      <button class="fb-btn" id="feedbackBtn"><span class="ic" data-ic="message" data-sz="15"></span>Фидбэк</button>
+      <button class="btn ghost" id="myChatsBtn" style="padding:8px 14px;font-size:13px;"><span class="ic" data-ic="list" data-sz="16"></span><span data-i18n="top.chats">Мои чаты</span></button>
+      <button class="fb-btn" id="feedbackBtn"><span class="ic" data-ic="message" data-sz="15"></span><span data-i18n="top.feedback">Фидбэк</span></button>
       <div class="stats" id="stats"></div>
-      <button class="btn ghost" id="newSourceBtn" style="padding:8px 14px;font-size:13px;"><span class="ic" data-ic="plus" data-sz="15"></span>Новый источник</button>
+      <button class="btn ghost" id="newSourceBtn" style="padding:8px 14px;font-size:13px;"><span class="ic" data-ic="plus" data-sz="15"></span><span data-i18n="top.newSource">Новый источник</span></button>
+      <button class="lang-btn" id="langBtn" type="button"></button>
       <div class="user-chip" id="userChip">
         <span class="ava" id="userAva"></span>
         <span id="userName"></span>
-        <button class="logout" id="logoutBtn" title="Выйти">выйти</button>
+        <button class="logout" id="logoutBtn" title="Выйти" data-i18n="top.logout" data-i18n-title="top.logoutTitle">выйти</button>
       </div>
     </header>
 
@@ -597,10 +630,10 @@
     <div class="drawer-backdrop" id="chatsBackdrop"></div>
     <aside class="drawer" id="chatsDrawer">
       <div class="drawer-head">
-        <h3>Мои чаты</h3>
-        <button class="drawer-close" id="chatsClose" aria-label="Закрыть"><span class="ic" data-ic="close" data-sz="18"></span></button>
+        <h3 data-i18n="top.chats">Мои чаты</h3>
+        <button class="drawer-close" id="chatsClose" aria-label="Закрыть" data-i18n-aria="common.close"><span class="ic" data-ic="close" data-sz="18"></span></button>
       </div>
-      <button class="btn primary" id="newChatBtn" style="flex:none;margin:12px 14px;"><span class="ic" data-ic="plus" data-sz="16"></span>Новый чат</button>
+      <button class="btn primary" id="newChatBtn" style="flex:none;margin:12px 14px;"><span class="ic" data-ic="plus" data-sz="16"></span><span data-i18n="drawer.newChat">Новый чат</span></button>
       <div class="chats-list" id="chatsList"></div>
     </aside>
 
@@ -609,75 +642,75 @@
       <div id="graph"></div>
       <div class="stage-empty" id="stageEmpty">
         <div class="glyph" style="color:var(--glow)"><span class="ic" data-ic="network" data-sz="36"></span></div>
-        <h2>Граф знаний появится здесь</h2>
-        <p>Загрузите текст или файл — Lumina разберёт его на понятия и связи, а затем ответит на ваши вопросы, показывая, через какие узлы графа пришёл ответ.</p>
-        <button class="btn primary" id="emptyCTA" style="flex:none;width:100%;max-width:220px;margin-top:6px;">Загрузить источник</button>
+        <h2 data-i18n="empty.title">Граф знаний появится здесь</h2>
+        <p data-i18n="empty.text">Загрузите текст или файл — Lumina разберёт его на понятия и связи, а затем ответит на ваши вопросы, показывая, через какие узлы графа пришёл ответ.</p>
+        <button class="btn primary" id="emptyCTA" style="flex:none;width:100%;max-width:220px;margin-top:6px;" data-i18n="empty.cta">Загрузить источник</button>
       </div>
       <div class="legend hidden" id="legend">
-        <div class="item"><span class="sw" style="background:linear-gradient(90deg,#38BDF8,#FBBF24,#F472B6)"></span>цвет = ветка</div>
-        <div class="item"><span class="sw" style="background:#34D399"></span>ответ (саб-чат)</div>
-        <div class="item"><span class="ring"></span>путь к ответу</div>
+        <div class="item"><span class="sw" style="background:linear-gradient(90deg,#38BDF8,#FBBF24,#F472B6)"></span><span data-i18n="legend.color">цвет = ветка</span></div>
+        <div class="item"><span class="sw" style="background:#34D399"></span><span data-i18n="legend.answer">ответ (саб-чат)</span></div>
+        <div class="item"><span class="ring"></span><span data-i18n="legend.path">путь к ответу</span></div>
       </div>
       <!-- Переключатель Граф / Документ (spatial). Показывается, когда есть манифест PDF. -->
       <div class="view-toggle hidden" id="viewToggle">
-        <button class="vt-btn active" id="vtGraph" data-view="graph">Граф</button>
-        <button class="vt-btn" id="vtDoc" data-view="spatial">Документ</button>
+        <button class="vt-btn active" id="vtGraph" data-view="graph" data-i18n="view.graph">Граф</button>
+        <button class="vt-btn" id="vtDoc" data-view="spatial" data-i18n="view.doc">Документ</button>
       </div>
     </main>
 
     <!-- CHAT -->
     <aside class="chat">
       <div class="chat-head">
-        <h3>Диалог с источником</h3>
+        <h3 data-i18n="chat.title">Диалог с источником</h3>
         <span class="intent" id="intentBadge"></span>
       </div>
       <div class="messages" id="messages">
         <div class="msg bot"><div class="answer">
-          <h4>Готов к работе</h4>
-          <div class="summary">Загрузите источник, чтобы начать. Затем задавайте вопросы — я отвечу на основе построенного графа знаний.</div>
+          <h4 data-i18n="chat.readyTitle">Готов к работе</h4>
+          <div class="summary" data-i18n="chat.readyText">Загрузите источник, чтобы начать. Затем задавайте вопросы — я отвечу на основе построенного графа знаний.</div>
         </div></div>
       </div>
       <div class="composer">
-        <textarea id="q" placeholder="Спросите что-нибудь о загруженном тексте…" disabled></textarea>
+        <textarea id="q" data-i18n-ph="chat.placeholder" placeholder="Спросите что-нибудь о загруженном тексте…" disabled></textarea>
         <div class="row">
-          <button class="btn primary" id="askBtn" disabled>Спросить</button>
+          <button class="btn primary" id="askBtn" disabled data-i18n="chat.ask">Спросить</button>
         </div>
       </div>
     </aside>
 
     <!-- МОБИЛЬНАЯ НАВИГАЦИЯ: переключение Карта / Чат (только на узких экранах) -->
     <nav class="mobile-nav" id="mobileNav">
-      <button data-pane="stage" class="active"><span class="ic" data-ic="network" data-sz="20"></span>Карта</button>
-      <button data-pane="chat"><span class="ic" data-ic="message" data-sz="20"></span>Чат</button>
+      <button data-pane="stage" class="active"><span class="ic" data-ic="network" data-sz="20"></span><span data-i18n="nav.map">Карта</span></button>
+      <button data-pane="chat"><span class="ic" data-ic="message" data-sz="20"></span><span data-i18n="nav.chat">Чат</span></button>
     </nav>
   </div>
 
   <!-- SOURCE MODAL -->
   <div class="overlay" id="overlay">
     <div class="modal" style="position:relative;">
-      <button id="modalClose" class="icon-btn modal-close" aria-label="Закрыть" title="Закрыть"><span class="ic" data-ic="close" data-sz="18"></span></button>
-      <h2>Загрузить источник</h2>
-      <div class="sub">Вставьте текст или загрузите файл. Lumina построит граф понятий и связей.</div>
+      <button id="modalClose" class="icon-btn modal-close" aria-label="Закрыть" data-i18n-aria="common.close" title="Закрыть" data-i18n-title="common.close"><span class="ic" data-ic="close" data-sz="18"></span></button>
+      <h2 data-i18n="src.title">Загрузить источник</h2>
+      <div class="sub" data-i18n="src.sub">Вставьте текст или загрузите файл. Lumina построит граф понятий и связей.</div>
       <div class="tabs">
-        <div class="tab active" data-tab="paste">Вставить текст</div>
-        <div class="tab" data-tab="file">Загрузить файл</div>
+        <div class="tab active" data-tab="paste" data-i18n="src.tabPaste">Вставить текст</div>
+        <div class="tab" data-tab="file" data-i18n="src.tabFile">Загрузить файл</div>
       </div>
       <div id="pane-paste">
-        <textarea id="srcText" placeholder="Вставьте сюда научный или учебный текст…"></textarea>
+        <textarea id="srcText" data-i18n-ph="src.placeholder" placeholder="Вставьте сюда научный или учебный текст…"></textarea>
       </div>
       <div id="pane-file" class="hidden">
         <div class="drop" id="drop">
           <div class="big"><span class="ic" data-ic="upload" data-sz="30"></span></div>
           <div class="spinner"></div>
-          <div class="drop-hint">Перетащите файл сюда или нажмите, чтобы выбрать</div>
-          <div class="fname" id="fname">поддерживается .txt, .md, .pdf, .pptx</div>
+          <div class="drop-hint" data-i18n="src.dropHint">Перетащите файл сюда или нажмите, чтобы выбрать</div>
+          <div class="fname" id="fname" data-default="1">поддерживается .txt, .md, .pdf, .pptx</div>
           <input type="file" id="fileInput" accept=".txt,.md,.pdf,.pptx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation" class="hidden">
         </div>
       </div>
-      <div class="hint">Совет: чем содержательнее текст, тем богаче граф. Оптимально — 300–3000 слов.</div>
+      <div class="hint" data-i18n="src.tip">Совет: чем содержательнее текст, тем богаче граф. Оптимально — 300–3000 слов.</div>
       <div class="hint" id="limitsInfo">Лимиты: текст до 100 000 символов · файлы .txt, .md, .pdf, .pptx до 15 МБ</div>
       <div class="actions">
-        <button class="btn primary" id="analyzeBtn">Построить граф</button>
+        <button class="btn primary" id="analyzeBtn" data-i18n="src.build">Построить граф</button>
       </div>
     </div>
   </div>
@@ -685,38 +718,38 @@
   <!-- Модалка узла: описание + фрагмент источника (по клику на блок графа) -->
   <div class="overlay" id="nodeOverlay">
     <div class="modal" style="position:relative; max-width:860px;">
-      <button id="nodeClose" class="icon-btn modal-close" aria-label="Закрыть" title="Закрыть"><span class="ic" data-ic="close" data-sz="18"></span></button>
+      <button id="nodeClose" class="icon-btn modal-close" aria-label="Закрыть" data-i18n-aria="common.close" title="Закрыть" data-i18n-title="common.close"><span class="ic" data-ic="close" data-sz="18"></span></button>
       <h2 id="nodeTitle" style="margin-right:28px;"></h2>
       <div class="sub" id="nodeType"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
-        <button id="nodeToDoc" class="mbtn" title="Показать эту ветку в документе" style="display:none;">
-          <span class="ic" data-ic="doc" data-sz="15"></span><span class="mbtn-lbl">Открыть в документе</span></button>
-        <button id="nodeInfographic" class="mbtn" title="Сгенерировать инфографику по этому разделу">
-          <span class="ic" data-ic="wand" data-sz="15"></span><span class="mbtn-lbl">Инфографика</span></button>
-        <button id="nodeInfographicView" class="mbtn" title="Открыть уже созданную инфографику" style="display:none;">
-          <span class="ic" data-ic="image" data-sz="15"></span><span class="mbtn-lbl">Открыть инфографику</span></button>
+        <button id="nodeToDoc" class="mbtn" title="Показать эту ветку в документе" data-i18n-title="node.toDocTitle" style="display:none;">
+          <span class="ic" data-ic="doc" data-sz="15"></span><span class="mbtn-lbl" data-i18n="node.toDoc">Открыть в документе</span></button>
+        <button id="nodeInfographic" class="mbtn" title="Сгенерировать инфографику по этому разделу" data-i18n-title="node.infographicTitle">
+          <span class="ic" data-ic="wand" data-sz="15"></span><span class="mbtn-lbl" data-i18n="node.infographic">Инфографика</span></button>
+        <button id="nodeInfographicView" class="mbtn" title="Открыть уже созданную инфографику" data-i18n-title="node.infographicViewTitle" style="display:none;">
+          <span class="ic" data-ic="image" data-sz="15"></span><span class="mbtn-lbl" data-i18n="node.infographicView">Открыть инфографику</span></button>
       </div>
       <div id="nodeDesc" style="margin:10px 0 0;color:#CBD5E1;font-size:14px;line-height:1.5;"></div>
       <div id="nodeSnippetWrap" style="margin-top:18px;">
-        <div class="src-label" style="color:#a78bfa;"><span class="ic" data-ic="doc" data-sz="13"></span>Фрагмент источника</div>
+        <div class="src-label" style="color:#a78bfa;"><span class="ic" data-ic="doc" data-sz="13"></span><span id="nodeSnippetLabel" data-i18n="node.snippet">Фрагмент источника</span></div>
         <div id="nodeSnippet" class="src-box" style="white-space:pre-wrap;"></div>
-        <div id="nodeSnippetHint" style="display:none;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-top:7px;"><span class="ic" data-ic="zoom" data-sz="13"></span>Нажмите на фрагмент, чтобы увеличить · можно прокрутить</div>
+        <div id="nodeSnippetHint" style="display:none;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-top:7px;"><span class="ic" data-ic="zoom" data-sz="13"></span><span data-i18n="node.snippetHint">Нажмите на фрагмент, чтобы увеличить · можно прокрутить</span></div>
       </div>
       <div id="nodeWorldWrap" style="margin-top:16px;">
-        <div class="src-label" style="color:#22D3EE;"><span class="ic" data-ic="spark" data-sz="13"></span>Кратко о понятии</div>
+        <div class="src-label" style="color:#22D3EE;"><span class="ic" data-ic="spark" data-sz="13"></span><span data-i18n="node.world">Кратко о понятии</span></div>
         <div id="nodeWorld" class="src-box cyan"></div>
       </div>
 
       <!-- САБ-ЧАТ: вопрос строго по этой ветке; ответ станет новым узлом-ответвлением -->
       <div id="nodeChatWrap" style="margin-top:18px;border-top:1px solid var(--border);padding-top:16px;">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#34D399;margin-bottom:8px;">Спросить по этой ветке</div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#34D399;margin-bottom:8px;" data-i18n="node.askTitle">Спросить по этой ветке</div>
         <div id="nodeChatMsgs" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
         <div style="display:flex;gap:8px;">
-          <input id="nodeChatInput" type="text" placeholder="Вопрос по этому разделу…"
+          <input id="nodeChatInput" type="text" data-i18n-ph="node.askPlaceholder" placeholder="Вопрос по этому разделу…"
             style="flex:1;background:rgba(20,20,51,0.6);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:13.5px;outline:none;">
-          <button id="nodeChatSend" class="btn primary" style="flex:none;padding:10px 18px;">Спросить</button>
+          <button id="nodeChatSend" class="btn primary" style="flex:none;padding:10px 18px;" data-i18n="chat.ask">Спросить</button>
         </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:8px;">Ответ добавится в граф отдельной веткой от этого узла.</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px;" data-i18n="node.askNote">Ответ добавится в граф отдельной веткой от этого узла.</div>
       </div>
     </div>
   </div>
@@ -724,24 +757,24 @@
   <!-- ПЕЙВОЛЛ: лимит бесплатного тарифа исчерпан -->
   <div class="overlay" id="paywallOverlay">
     <div class="modal" style="position:relative; max-width:460px; text-align:center;">
-      <button id="paywallClose" class="icon-btn modal-close" aria-label="Закрыть" title="Закрыть"><span class="ic" data-ic="close" data-sz="18"></span></button>
+      <button id="paywallClose" class="icon-btn modal-close" aria-label="Закрыть" data-i18n-aria="common.close" title="Закрыть" data-i18n-title="common.close"><span class="ic" data-ic="close" data-sz="18"></span></button>
       <div style="color:var(--glow);margin-bottom:10px;"><span class="ic" data-ic="spark" data-sz="34"></span></div>
-      <h2 style="margin:0 0 8px;">Бесплатные графы закончились</h2>
-      <div class="sub" id="paywallText" style="margin-bottom:18px;">Вы использовали все 5 графов бесплатного тарифа.</div>
-      <div style="background:rgba(20,20,51,0.6);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:18px;text-align:left;font-size:13.5px;color:#CBD5E1;line-height:1.6;">
+      <h2 style="margin:0 0 8px;" data-i18n="pay.title">Бесплатные графы закончились</h2>
+      <div class="sub" id="paywallText" style="margin-bottom:18px;" data-i18n="pay.text">Вы использовали все 5 графов бесплатного тарифа.</div>
+      <div style="background:rgba(20,20,51,0.6);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:18px;text-align:left;font-size:13.5px;color:#CBD5E1;line-height:1.6;" data-i18n="pay.offer">
         Хотите продолжить без ограничений? Напишите нам — откроем доступ к Pro ($5/мес):
         безлимитные графы, всё из Free, приоритет в очереди.
       </div>
       <a class="btn primary" style="display:block;text-align:center;padding:12px 20px;box-sizing:border-box;text-decoration:none;"
-         href="mailto:markingmark33@gmail.com?subject=Lumina%20Pro%20—%20хочу%20доступ">Запросить доступ к Pro</a>
-      <div style="font-size:11.5px;color:var(--muted);margin-top:12px;">Созданные графы остаются доступны в «Мои чаты». Удаление чата не возвращает слот.</div>
+         href="mailto:markingmark33@gmail.com?subject=Lumina%20Pro%20—%20хочу%20доступ" data-i18n="pay.cta">Запросить доступ к Pro</a>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:12px;" data-i18n="pay.note">Созданные графы остаются доступны в «Мои чаты». Удаление чата не возвращает слот.</div>
     </div>
   </div>
 
   <div class="fb-overlay" id="fbOverlay">
     <div class="fb-modal">
-      <h2>Оставить отзыв</h2>
-      <p class="sub">Расскажите, что понравилось или что можно улучшить.</p>
+      <h2 data-i18n="fb.title">Оставить отзыв</h2>
+      <p class="sub" data-i18n="fb.sub">Расскажите, что понравилось или что можно улучшить.</p>
       <div class="fb-stars" id="fbStars">
         <button class="fb-star" data-v="1">★</button>
         <button class="fb-star" data-v="2">★</button>
@@ -749,10 +782,10 @@
         <button class="fb-star" data-v="4">★</button>
         <button class="fb-star" data-v="5">★</button>
       </div>
-      <textarea id="fbText" placeholder="Ваш отзыв…"></textarea>
+      <textarea id="fbText" data-i18n-ph="fb.placeholder" placeholder="Ваш отзыв…"></textarea>
       <div class="actions">
-        <button class="btn ghost" onclick="closeFb()">Отмена</button>
-        <button class="btn primary" id="fbSend" style="flex:1">Отправить</button>
+        <button class="btn ghost" onclick="closeFb()" data-i18n="fb.cancel">Отмена</button>
+        <button class="btn primary" id="fbSend" style="flex:1" data-i18n="fb.send">Отправить</button>
       </div>
       <div id="fbStatus"></div>
     </div>
@@ -772,9 +805,12 @@
 
   // Заголовок авторизации: токен текущей сессии Supabase (бэк проверяет его по JWKS).
   async function authHeader(){
-    if (!sb) return {};
+    // X-Lang: бэкенд отвечает (и пишет ошибки) на языке версии сайта
+    const h = { 'X-Lang': LANG };
+    if (!sb) return h;
     const { data: { session } } = await sb.auth.getSession();
-    return session ? { 'Authorization': `Bearer ${session.access_token}` } : {};
+    if (session) h['Authorization'] = `Bearer ${session.access_token}`;
+    return h;
   }
 
   // Прогрев бэкенда: Render на free-плане засыпает, первый запрос висит 30-50 сек.
@@ -786,11 +822,7 @@
     fetch(API_BASE + '/api/health')
       .then(r => r.json())
       .then(h => {
-        const el = $('limitsInfo');
-        if (el && h && h.max_text_chars) {
-          const files = (h.accepted_files || ['.txt', '.md', '.pdf']).join(', ');
-          el.textContent = `Лимиты: текст до ${h.max_text_chars.toLocaleString('ru')} символов · файлы ${files} до ${h.max_pdf_mb} МБ`;
-        }
+        if (h && h.max_text_chars) { healthInfo = h; renderLimits(); }
       })
       .catch(() => {});
   }
@@ -831,6 +863,310 @@
   let currentUserEmail = ''; // email текущего пользователя (для обхода лимита владельцем)
   let currentUserId = '';    // auth.uid текущего пользователя (первая папка пути в Storage)
   let sessionDocKey = null;  // ключ текущего документа для путей инфографик в Storage
+
+  // ── I18N: русская и английская версии интерфейса ─────────────────────────────
+  // Язык выбран в <head> (window.__LANG). Статическая разметка помечена data-i18n*,
+  // динамические строки берутся через T(key, vars). Переключение — без перезагрузки
+  // (applyI18n), чтобы не терять открытый граф; уже выведенные ответы остаются как есть.
+  // Бэкенд получает язык заголовком X-Lang и отвечает на нём (см. authHeader).
+  const I18N = {
+    ru: {
+      'doc.title': 'Lumina — рабочее пространство',
+      'lang.switch': 'Switch to English',
+      'gate.title': 'Вход в Lumina',
+      'gate.text': 'Войдите, чтобы построить граф знаний и задавать вопросы своим источникам.',
+      'gate.google': 'Войти через Google',
+      'gate.note': 'Продолжая, вы соглашаетесь с Условиями использования и Политикой конфиденциальности.',
+      'gate.noSupabase': 'Supabase недоступен. Проверьте подключение к интернету.',
+      'gate.notConfigured': 'Supabase не настроен — вход невозможен.',
+      'gate.loginFailed': 'Не удалось войти: ',
+      'top.chats': 'Мои чаты',
+      'top.feedback': 'Фидбэк',
+      'top.newSource': 'Новый источник',
+      'top.logout': 'выйти',
+      'top.logoutTitle': 'Выйти',
+      'common.close': 'Закрыть',
+      'drawer.newChat': 'Новый чат',
+      'empty.title': 'Граф знаний появится здесь',
+      'empty.text': 'Загрузите текст или файл — Lumina разберёт его на понятия и связи, а затем ответит на ваши вопросы, показывая, через какие узлы графа пришёл ответ.',
+      'empty.cta': 'Загрузить источник',
+      'legend.color': 'цвет = ветка',
+      'legend.answer': 'ответ (саб-чат)',
+      'legend.path': 'путь к ответу',
+      'view.graph': 'Граф',
+      'view.doc': 'Документ',
+      'chat.title': 'Диалог с источником',
+      'chat.readyTitle': 'Готов к работе',
+      'chat.readyText': 'Загрузите источник, чтобы начать. Затем задавайте вопросы — я отвечу на основе построенного графа знаний.',
+      'chat.placeholder': 'Спросите что-нибудь о загруженном тексте…',
+      'chat.ask': 'Спросить',
+      'chat.thinking': 'Строю граф и рассуждаю…',
+      'chat.intent': 'намерение: ',
+      'chat.answerReady': 'Ответ готов',
+      'chat.keyPoints': 'Ключевое',
+      'chat.failedTitle': 'Не получилось',
+      'nav.map': 'Карта',
+      'nav.chat': 'Чат',
+      'src.title': 'Загрузить источник',
+      'src.sub': 'Вставьте текст или загрузите файл. Lumina построит граф понятий и связей.',
+      'src.tabPaste': 'Вставить текст',
+      'src.tabFile': 'Загрузить файл',
+      'src.placeholder': 'Вставьте сюда научный или учебный текст…',
+      'src.dropHint': 'Перетащите файл сюда или нажмите, чтобы выбрать',
+      'src.supported': 'поддерживается .txt, .md, .pdf, .pptx',
+      'src.tip': 'Совет: чем содержательнее текст, тем богаче граф. Оптимально — 300–3000 слов.',
+      'src.limits': 'Лимиты: текст до {chars} символов · файлы {files} до {mb} МБ',
+      'src.build': 'Построить граф',
+      'file.unsupported': 'Поддерживаются .txt, .md, .pdf и .pptx.',
+      'file.loaded': ' · загружен',
+      'file.parsing': 'Разбираю «{name}»…',
+      'file.parseFailed': 'Не удалось разобрать файл.',
+      'file.unitSlides': 'слайд.',
+      'file.unitPages': 'стр.',
+      'file.ocr': ' · распознано OCR',
+      'file.done': '✓ {name} · {pages} {unit}, {chars} символов{ocr}',
+      'file.noServer': 'Нет связи с сервером для разбора файла: ',
+      'session.expired': 'Сессия истекла — войдите снова.',
+      'type.concept': 'Концепция', 'type.method': 'Метод', 'type.person': 'Персона', 'type.term': 'Термин',
+      'type.branch': 'Тематическая ветка', 'type.section': 'Раздел документа', 'type.answer': 'Ответ (саб-чат)',
+      'node.question': 'Вопрос: ',
+      'node.toDoc': 'Открыть в документе',
+      'node.toDocTitle': 'Показать эту ветку в документе',
+      'node.infographic': 'Инфографика',
+      'node.infographicTitle': 'Сгенерировать инфографику по этому разделу',
+      'node.infographicView': 'Открыть инфографику',
+      'node.infographicViewTitle': 'Открыть уже созданную инфографику',
+      'node.regenerate': 'Пересоздать',
+      'node.generating': 'Генерирую…',
+      'node.snippet': 'Фрагмент источника',
+      'node.answerLabel': 'Ответ',
+      'node.snippetHint': 'Нажмите на фрагмент, чтобы увеличить · можно прокрутить',
+      'node.world': 'Кратко о понятии',
+      'node.askTitle': 'Спросить по этой ветке',
+      'node.askPlaceholder': 'Вопрос по этому разделу…',
+      'node.askNote': 'Ответ добавится в граф отдельной веткой от этого узла.',
+      'node.failed': 'Не получилось: ',
+      'node.errorGeneric': 'ошибка',
+      'info.failed': 'Не удалось создать инфографику.',
+      'info.noServer': 'Нет связи с сервером Lumina.',
+      'info.loading': 'Генерирую инфографику…',
+      'info.loadingSub': 'ИИ рисует картинку по разделу — это занимает несколько секунд',
+      'info.modelTitle': 'Модель Gemini, которая нарисовала инфографику',
+      'info.download': 'Скачать PNG',
+      'analyze.emptyText': 'Сначала вставьте текст или загрузите файл.',
+      'analyze.firstQuestion': 'О чём этот текст? Дай общую картину.',
+      'ask.noSource': 'Сначала загрузите источник.',
+      'ask.failed': 'Не удалось обработать запрос.',
+      'ask.noBackend': 'Нет связи с сервером Lumina. Проверьте, что бэкенд запущен: ',
+      'graph.expand': 'Развернуть ветку',
+      'graph.collapse': 'Свернуть ветку',
+      'graph.mentions': ' · упоминаний: ',
+      'doc.figChart': 'Чарт/чертёж',
+      'doc.figImage': 'Картинка',
+      'doc.figZoom': ' — нажмите, чтобы увеличить',
+      'doc.pageAlt': 'стр. {n}',
+      'fig.mentioned': 'Где упоминается в тексте',
+      'stats.nodes': 'узлов', 'stats.edges': 'связей', 'stats.words': 'слов',
+      'user.default': 'Пользователь',
+      'chats.empty': 'Пока нет сохранённых чатов',
+      'chats.untitled': 'Без названия',
+      'chats.delete': 'Удалить чат',
+      'chats.loadFailed': 'Не удалось загрузить',
+      'chats.confirmDelete': 'Удалить этот чат безвозвратно?',
+      'chats.deleteFailed': 'Не удалось удалить чат.',
+      'pay.title': 'Бесплатные графы закончились',
+      'pay.text': 'Вы использовали все 5 графов бесплатного тарифа.',
+      'pay.textN': 'Вы использовали {used} из {limit} графов бесплатного тарифа.',
+      'pay.offer': 'Хотите продолжить без ограничений? Напишите нам — откроем доступ к Pro ($5/мес): безлимитные графы, всё из Free, приоритет в очереди.',
+      'pay.cta': 'Запросить доступ к Pro',
+      'pay.subject': 'Lumina Pro — хочу доступ',
+      'pay.note': 'Созданные графы остаются доступны в «Мои чаты». Удаление чата не возвращает слот.',
+      'fb.title': 'Оставить отзыв',
+      'fb.sub': 'Расскажите, что понравилось или что можно улучшить.',
+      'fb.placeholder': 'Ваш отзыв…',
+      'fb.cancel': 'Отмена',
+      'fb.send': 'Отправить',
+      'fb.thanks': '✓ Спасибо за отзыв!',
+      'fb.empty': 'Напишите отзыв или поставьте оценку.',
+      'fb.failed': 'Не удалось отправить отзыв. Попробуйте позже.',
+      'err.noConnection': 'Нет связи с сервером.',
+    },
+    en: {
+      'doc.title': 'Lumina — workspace',
+      'lang.switch': 'Переключить на русский',
+      'gate.title': 'Sign in to Lumina',
+      'gate.text': 'Sign in to build a knowledge map and ask questions about your sources.',
+      'gate.google': 'Continue with Google',
+      'gate.note': 'By continuing, you agree to the Terms of Use and the Privacy Policy.',
+      'gate.noSupabase': 'Supabase is unavailable. Check your internet connection.',
+      'gate.notConfigured': 'Supabase is not configured — sign-in is unavailable.',
+      'gate.loginFailed': 'Sign-in failed: ',
+      'top.chats': 'My chats',
+      'top.feedback': 'Feedback',
+      'top.newSource': 'New source',
+      'top.logout': 'sign out',
+      'top.logoutTitle': 'Sign out',
+      'common.close': 'Close',
+      'drawer.newChat': 'New chat',
+      'empty.title': 'Your knowledge map will appear here',
+      'empty.text': 'Upload text or a file — Lumina will break it down into concepts and connections, then answer your questions and show which nodes of the map each answer came from.',
+      'empty.cta': 'Upload a source',
+      'legend.color': 'color = branch',
+      'legend.answer': 'answer (sub-chat)',
+      'legend.path': 'path to answer',
+      'view.graph': 'Map',
+      'view.doc': 'Document',
+      'chat.title': 'Chat with your source',
+      'chat.readyTitle': 'Ready when you are',
+      'chat.readyText': 'Upload a source to get started. Then ask questions — I’ll answer based on the knowledge map.',
+      'chat.placeholder': 'Ask anything about the uploaded text…',
+      'chat.ask': 'Ask',
+      'chat.thinking': 'Building the map and thinking…',
+      'chat.intent': 'intent: ',
+      'chat.answerReady': 'Answer ready',
+      'chat.keyPoints': 'Key points',
+      'chat.failedTitle': 'Something went wrong',
+      'nav.map': 'Map',
+      'nav.chat': 'Chat',
+      'src.title': 'Upload a source',
+      'src.sub': 'Paste text or upload a file. Lumina will build a map of concepts and connections.',
+      'src.tabPaste': 'Paste text',
+      'src.tabFile': 'Upload file',
+      'src.placeholder': 'Paste a scientific or study text here…',
+      'src.dropHint': 'Drop a file here or click to choose one',
+      'src.supported': 'supports .txt, .md, .pdf, .pptx',
+      'src.tip': 'Tip: the richer the text, the richer the map. 300–3,000 words works best.',
+      'src.limits': 'Limits: text up to {chars} characters · {files} files up to {mb} MB',
+      'src.build': 'Build the map',
+      'file.unsupported': 'Supported formats: .txt, .md, .pdf and .pptx.',
+      'file.loaded': ' · loaded',
+      'file.parsing': 'Processing “{name}”…',
+      'file.parseFailed': 'Could not process the file.',
+      'file.unitSlides': 'slides',
+      'file.unitPages': 'pages',
+      'file.ocr': ' · recognized with OCR',
+      'file.done': '✓ {name} · {pages} {unit}, {chars} characters{ocr}',
+      'file.noServer': 'Can’t reach the server to process the file: ',
+      'session.expired': 'Your session has expired — please sign in again.',
+      'type.concept': 'Concept', 'type.method': 'Method', 'type.person': 'Person', 'type.term': 'Term',
+      'type.branch': 'Topic branch', 'type.section': 'Document section', 'type.answer': 'Answer (sub-chat)',
+      'node.question': 'Question: ',
+      'node.toDoc': 'Open in document',
+      'node.toDocTitle': 'Show this branch in the document',
+      'node.infographic': 'Infographic',
+      'node.infographicTitle': 'Generate an infographic for this section',
+      'node.infographicView': 'Open infographic',
+      'node.infographicViewTitle': 'Open the infographic you already made',
+      'node.regenerate': 'Regenerate',
+      'node.generating': 'Generating…',
+      'node.snippet': 'Source excerpt',
+      'node.answerLabel': 'Answer',
+      'node.snippetHint': 'Tap the excerpt to zoom in · it scrolls',
+      'node.world': 'In brief',
+      'node.askTitle': 'Ask about this branch',
+      'node.askPlaceholder': 'A question about this section…',
+      'node.askNote': 'The answer will be added to the map as a new branch from this node.',
+      'node.failed': 'Something went wrong: ',
+      'node.errorGeneric': 'error',
+      'info.failed': 'Could not create the infographic.',
+      'info.noServer': 'Can’t reach the Lumina server.',
+      'info.loading': 'Generating the infographic…',
+      'info.loadingSub': 'AI is drawing an image for this section — it takes a few seconds',
+      'info.modelTitle': 'The Gemini model that drew this infographic',
+      'info.download': 'Download PNG',
+      'analyze.emptyText': 'Paste some text or upload a file first.',
+      'analyze.firstQuestion': 'What is this text about? Give me the big picture.',
+      'ask.noSource': 'Upload a source first.',
+      'ask.failed': 'Could not process the request.',
+      'ask.noBackend': 'Can’t reach the Lumina server. Check that the backend is running: ',
+      'graph.expand': 'Expand branch',
+      'graph.collapse': 'Collapse branch',
+      'graph.mentions': ' · mentions: ',
+      'doc.figChart': 'Chart/diagram',
+      'doc.figImage': 'Image',
+      'doc.figZoom': ' — click to enlarge',
+      'doc.pageAlt': 'page {n}',
+      'fig.mentioned': 'Where it’s mentioned in the text',
+      'stats.nodes': 'nodes', 'stats.edges': 'links', 'stats.words': 'words',
+      'user.default': 'User',
+      'chats.empty': 'No saved chats yet',
+      'chats.untitled': 'Untitled',
+      'chats.delete': 'Delete chat',
+      'chats.loadFailed': 'Could not load',
+      'chats.confirmDelete': 'Delete this chat permanently?',
+      'chats.deleteFailed': 'Could not delete the chat.',
+      'pay.title': 'You’ve used all your free maps',
+      'pay.text': 'You’ve used all 5 maps on the free plan.',
+      'pay.textN': 'You’ve used {used} of {limit} maps on the free plan.',
+      'pay.offer': 'Want to keep going without limits? Write to us and we’ll open Pro access ($5/mo): unlimited maps, everything in Free, and priority processing.',
+      'pay.cta': 'Request Pro access',
+      'pay.subject': 'Lumina Pro — access request',
+      'pay.note': 'Maps you’ve created stay in “My chats”. Deleting a chat doesn’t free up a slot.',
+      'fb.title': 'Leave feedback',
+      'fb.sub': 'Tell us what you liked or what we could do better.',
+      'fb.placeholder': 'Your feedback…',
+      'fb.cancel': 'Cancel',
+      'fb.send': 'Send',
+      'fb.thanks': '✓ Thanks for the feedback!',
+      'fb.empty': 'Write something or leave a rating.',
+      'fb.failed': 'Could not send feedback. Please try again later.',
+      'err.noConnection': 'No connection to the server.',
+    },
+  };
+  let LANG = (window.__LANG === 'en') ? 'en' : 'ru';
+  const LOCALE = () => (LANG === 'en' ? 'en-US' : 'ru-RU');
+  // автоматический первый вопрос на обоих языках — не использовать как заголовок чата
+  const FIRST_QUESTIONS = [I18N.ru['analyze.firstQuestion'], I18N.en['analyze.firstQuestion']];
+
+  function T(key, vars){
+    let str = I18N[LANG] && I18N[LANG][key];
+    if (str == null) str = I18N.ru[key];
+    if (str == null) return key;
+    if (vars) str = str.replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? String(vars[k]) : m));
+    return str;
+  }
+
+  let healthInfo = null;   // /api/health (реальные лимиты) — для перерисовки подсказки на любом языке
+  function renderLimits(){
+    const el = document.getElementById('limitsInfo');
+    if (!el) return;
+    const h = healthInfo || {};
+    el.textContent = T('src.limits', {
+      chars: (h.max_text_chars || 100000).toLocaleString(LOCALE()),
+      files: (h.accepted_files || ['.txt', '.md', '.pdf', '.pptx']).join(', '),
+      mb: h.max_pdf_mb || 15,
+    });
+  }
+
+  function applyI18n(){
+    document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = T(el.dataset.i18n); });
+    document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = T(el.dataset.i18nPh); });
+    document.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = T(el.dataset.i18nTitle); });
+    document.querySelectorAll('[data-i18n-aria]').forEach(el => { el.setAttribute('aria-label', T(el.dataset.i18nAria)); });
+    document.title = T('doc.title');
+    document.documentElement.lang = LANG;
+    const lb = document.getElementById('langBtn');
+    if (lb) { lb.textContent = LANG === 'ru' ? 'EN' : 'RU'; lb.title = T('lang.switch'); lb.setAttribute('aria-label', T('lang.switch')); }
+    const fn = document.getElementById('fname');
+    if (fn && fn.dataset.default === '1') fn.textContent = T('src.supported');   // статус загрузки не трогаем
+    const ml = document.querySelector('#paywallOverlay a[href^="mailto:"]');
+    if (ml) ml.href = ml.href.split('?')[0] + '?subject=' + encodeURIComponent(T('pay.subject'));
+    renderLimits();
+    document.documentElement.classList.remove('i18n-pending');
+  }
+
+  // переключение RU ↔ EN на лету (без перезагрузки — открытый граф и чат остаются)
+  function setLang(next){
+    LANG = next === 'en' ? 'en' : 'ru';
+    try { localStorage.setItem('lumina_lang', LANG); } catch (_) {}
+    applyI18n();
+    if (typeof nodeModalId !== 'undefined' && nodeModalId && lastGraph) {   // открытая модалка узла
+      const n = lastGraph.nodes.find(x => x.id === nodeModalId);
+      if (n) openNodeModal(n);
+    }
+  }
+  document.getElementById('langBtn').onclick = () => setLang(LANG === 'ru' ? 'en' : 'ru');
+  applyI18n();
 
   // ── ЭЛЕМЕНТЫ ──
   const $ = id => document.getElementById(id);
@@ -901,11 +1237,11 @@
       || file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
     if (isDoc) { uploadPdf(file); return; }
     if (!/\.(txt|md)$/i.test(file.name)) {
-      toast('Поддерживаются .txt, .md, .pdf и .pptx.');
+      toast(T('file.unsupported'));
       return;
     }
     const r = new FileReader();
-    r.onload = () => { currentText = r.result; $('fname').textContent = file.name + ' · загружен'; };
+    r.onload = () => { currentText = r.result; $('fname').textContent = file.name + T('file.loaded'); $('fname').dataset.default = '0'; };
     r.readAsText(file);
   }
 
@@ -915,30 +1251,30 @@
     const isPptx = /\.pptx$/i.test(file.name)
       || file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
     $('drop').classList.add('loading');                 // спиннер + подсветка
-    fname.textContent = `Разбираю «${file.name}»…`;
+    fname.textContent = T('file.parsing', { name: file.name }); fname.dataset.default = '0';
     try {
       const fd = new FormData();
       fd.append('file', file);
       const res = await fetch(API_BASE + '/api/extract', { method: 'POST', headers: await authHeader(), body: fd });
       const data = await res.json();
       if (!res.ok) {
-        if (res.status === 401) showGate('Сессия истекла — войдите снова.');
+        if (res.status === 401) showGate(T('session.expired'));
         $('drop').classList.remove('loading');
-        fname.textContent = 'поддерживается .txt, .md, .pdf, .pptx';
-        toast(data.detail || 'Не удалось разобрать файл.');
+        fname.textContent = T('src.supported'); fname.dataset.default = '1';
+        toast(data.detail || T('file.parseFailed'));
         return;
       }
       currentText = data.text;
       $('drop').classList.remove('loading');
-      const unit = data.kind === 'pptx' ? 'слайд.' : 'стр.';
-      const ocrTag = data.ocr ? ' · распознано OCR' : '';
-      fname.textContent = `✓ ${file.name} · ${data.pages} ${unit}, ${data.chars.toLocaleString('ru')} символов${ocrTag}`;
+      const unit = data.kind === 'pptx' ? T('file.unitSlides') : T('file.unitPages');
+      const ocrTag = data.ocr ? T('file.ocr') : '';
+      fname.textContent = T('file.done', { name: file.name, pages: data.pages, unit, chars: data.chars.toLocaleString(LOCALE()), ocr: ocrTag });
       // spatial-манифест строим ТОЛЬКО для PDF (у .pptx нет постраничной вёрстки для вырезок)
       ingestPromise = isPptx ? null : ingestPdf(file);
     } catch (err) {
       $('drop').classList.remove('loading');
-      fname.textContent = 'поддерживается .txt, .md, .pdf, .pptx';
-      toast('Нет связи с сервером для разбора PDF: ' + API_BASE);
+      fname.textContent = T('src.supported'); fname.dataset.default = '1';
+      toast(T('file.noServer') + API_BASE);
     }
   }
 
@@ -995,7 +1331,7 @@
   // файл/текст, хотя реального содержимого уже нет ("нужно сначала загрузить файл").
   function resetSourceInputs(){
     currentText = '';
-    $('fname').textContent = 'поддерживается .txt, .md, .pdf, .pptx';
+    $('fname').textContent = T('src.supported'); $('fname').dataset.default = '1';
     $('srcText').value = '';
     resetSpatial();
   }
@@ -1009,7 +1345,8 @@
 
   // ── МОДАЛКА УЗЛА (описание + фрагмент источника + саб-чат) ──
   const nodeOverlay = $('nodeOverlay');
-  const TYPE_LABEL = { concept:'Концепция', method:'Метод', person:'Персона', term:'Термин', branch:'Тематическая ветка', section:'Раздел документа', answer:'Ответ (саб-чат)' };
+  // подпись типа узла на текущем языке (Proxy: TYPE_LABEL[type] как раньше)
+  const TYPE_LABEL = new Proxy({}, { get: (_, k) => (typeof k === 'string' && ('type.' + k) in I18N.ru) ? T('type.' + k) : undefined });
   let nodeModalId = null;   // id узла, открытого сейчас в модалке (к нему крепится саб-чат)
   let nodeModalBlock = null;// блок документа, связанный с открытым узлом (для перехода в документ)
   let modalCropSource = null;// источник вырезки в модалке (для увеличения по клику): {block}|{section}
@@ -1020,7 +1357,7 @@
     $('nodeTitle').textContent = n.name || '';
     $('nodeType').textContent = TYPE_LABEL[n.type] || n.type || '';
     // у узла-ответа показываем вопрос как описание
-    const desc = (n.question ? 'Вопрос: ' + n.question : (n.description || '')).trim();
+    const desc = (n.question ? T('node.question') + n.question : (n.description || '')).trim();
     $('nodeDesc').textContent = desc;
     $('nodeDesc').style.display = desc ? '' : 'none';
     // 1) фрагмент источника (картинка-вырезка — математика цела):
@@ -1050,7 +1387,7 @@
       cropEl.style.cursor = 'zoom-in';                    // клик → увеличить (лайтбокс)
       cropEl.onclick = openCropZoom;
       snip.appendChild(cropEl);
-      snip.previousElementSibling.textContent = 'Фрагмент источника';
+      $('nodeSnippetLabel').textContent = T('node.snippet');
       $('nodeSnippetHint').style.display = 'inline-flex'; // подсказка: можно увеличить/прокрутить
       $('nodeSnippetWrap').style.display = '';
     } else if (frag) {
@@ -1058,7 +1395,7 @@
       snip.style.maxHeight = ''; snip.style.overflowY = '';
       snip.style.display = ''; snip.style.alignItems = ''; snip.style.overflowX = '';
       $('nodeSnippetHint').style.display = 'none';
-      snip.previousElementSibling.textContent = n.type === 'answer' ? 'Ответ' : 'Фрагмент источника';
+      $('nodeSnippetLabel').textContent = n.type === 'answer' ? T('node.answerLabel') : T('node.snippet');
       $('nodeSnippetWrap').style.display = '';
     } else {
       $('nodeSnippetWrap').style.display = 'none';   // нет в тексте — секцию не показываем
@@ -1121,15 +1458,15 @@
       });
       const data = await res.json();
       if (!res.ok) {
-        if (res.status === 401) showGate('Сессия истекла — войдите снова.');
+        if (res.status === 401) showGate(T('session.expired'));
         $('nodeChatMsgs').insertAdjacentHTML('beforeend',
-          `<div style="align-self:flex-start;color:var(--warn);font-size:12.5px;">Не получилось: ${esc(data.detail || 'ошибка')}</div>`);
+          `<div style="align-self:flex-start;color:var(--warn);font-size:12.5px;">${esc(T('node.failed'))}${esc(data.detail || T('node.errorGeneric'))}</div>`);
         return;
       }
       // создаём новый узел-ответ и ребро ТОЛЬКО от этой ветки
       const newId = 'ans_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
       lastGraph.nodes.push({
-        id: newId, name: data.title || 'Ответ', type: 'answer',
+        id: newId, name: data.title || T('node.answerLabel'), type: 'answer',
         question: q, excerpt: data.excerpt || '', full: data.full || data.excerpt || '',
         world: '', mentions: 1, in_answer: false,
       });
@@ -1140,9 +1477,9 @@
       saveChat();                    // сохранить в Supabase
     } catch (err) {
       $('nodeChatMsgs').insertAdjacentHTML('beforeend',
-        `<div style="align-self:flex-start;color:var(--warn);font-size:12.5px;">Нет связи с сервером.</div>`);
+        `<div style="align-self:flex-start;color:var(--warn);font-size:12.5px;">${esc(T('err.noConnection'))}</div>`);
     } finally {
-      btn.disabled = false; input.disabled = false; btn.textContent = 'Спросить';
+      btn.disabled = false; input.disabled = false; btn.textContent = T('chat.ask');
     }
   }
   $('nodeChatSend').onclick = sendNodeQuestion;
@@ -1157,7 +1494,7 @@
     const btn = $('nodeInfographic');
     const lbl = btn.querySelector('.mbtn-lbl');
     const prev = lbl ? lbl.textContent : '';
-    btn.disabled = true; if (lbl) lbl.textContent = 'Генерирую…';
+    btn.disabled = true; if (lbl) lbl.textContent = T('node.generating');
     showInfographicLoading();                 // сразу открываем лайтбокс с анимацией
     try {
       const res = await fetch(API_BASE + '/api/infographic', {
@@ -1170,8 +1507,8 @@
       });
       const data = await res.json();
       if (!res.ok) {
-        if (res.status === 401) showGate('Сессия истекла — войдите снова.');
-        showInfographicError(data.detail || 'Не удалось создать инфографику.');
+        if (res.status === 401) showGate(T('session.expired'));
+        showInfographicError(data.detail || T('info.failed'));
         return;
       }
       infographicCache[nid] = data;           // кэш за сессию → переоткрыть/скачать позже
@@ -1184,7 +1521,7 @@
       } catch (e) { console.error('infographic persist', e); }
       updateInfographicButtons(node);
     } catch (err) {
-      showInfographicError('Нет связи с сервером Lumina.');
+      showInfographicError(T('info.noServer'));
     } finally {
       btn.disabled = false; if (lbl) lbl.textContent = prev;
     }
@@ -1242,7 +1579,7 @@
     const has = node && infographicCache[node.id];
     $('nodeInfographicView').style.display = has ? 'inline-flex' : 'none';
     const lbl = $('nodeInfographic').querySelector('.mbtn-lbl');
-    if (lbl) lbl.textContent = has ? 'Пересоздать' : 'Инфографика';
+    if (lbl) lbl.textContent = has ? T('node.regenerate') : T('node.infographic');
   }
 
   // лайтбокс: анимированный загрузчик, пока генерируется картинка (не «зависло»)
@@ -1254,8 +1591,8 @@
       + 'gap:16px;min-width:min(80vw,420px);min-height:280px;padding:32px;color:#a5f3fc;font:600 14px Inter,sans-serif;">'
       + '<div style="width:46px;height:46px;border-radius:50%;border:4px solid rgba(34,211,238,.2);'
       + 'border-top-color:#22D3EE;animation:dropspin .8s linear infinite;"></div>'
-      + '<div>Генерирую инфографику…</div>'
-      + '<div style="font-weight:400;font-size:12px;color:#64748b;">ИИ рисует картинку по разделу — это занимает несколько секунд</div>'
+      + '<div>' + esc(T('info.loading')) + '</div>'
+      + '<div style="font-weight:400;font-size:12px;color:#64748b;">' + esc(T('info.loadingSub')) + '</div>'
       + '</div>';
     $('figOverlay').classList.add('open');
   }
@@ -1275,7 +1612,7 @@
     box.innerHTML = ''; box.style.background = '#0e0e2a';
     const img = document.createElement('img');
     img.src = data.image;
-    img.alt = data.title || 'Инфографика';
+    img.alt = data.title || T('node.infographic');
     img.style.cssText = 'display:block;max-width:100%;height:auto;';
     box.appendChild(img);
     const bar = document.createElement('div');
@@ -1283,13 +1620,13 @@
     if (data.model) {
       const tag = document.createElement('span');
       tag.textContent = data.model;
-      tag.title = 'Модель Gemini, которая нарисовала инфографику';
+      tag.title = T('info.modelTitle');
       tag.style.cssText = 'font:11px JetBrains Mono,monospace;color:#64748b;';
       bar.appendChild(tag);
     }
     const fname = (data.title || 'infographic').replace(/[^\wа-яё\- ]/gi, '').slice(0, 60) + '.png';
     const dl = document.createElement('button');
-    dl.innerHTML = svgIcon('download', 15) + '<span>Скачать PNG</span>';
+    dl.innerHTML = svgIcon('download', 15) + '<span>' + esc(T('info.download')) + '</span>';
     dl.style.cssText = 'flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;'
       + 'padding:9px 14px;font:600 13px Inter,sans-serif;border:none;'
       + 'background:var(--accent);color:#fff;border-radius:8px;cursor:pointer;';
@@ -1338,7 +1675,7 @@
   const paywallOverlay = $('paywallOverlay');
   function openPaywall(used){
     if (typeof used === 'number') {
-      $('paywallText').textContent = `Вы использовали ${used} из ${FREE_GRAPH_LIMIT} графов бесплатного тарифа.`;
+      $('paywallText').textContent = T('pay.textN', { used, limit: FREE_GRAPH_LIMIT });
     }
     paywallOverlay.classList.add('open');
   }
@@ -1361,7 +1698,7 @@
   $('analyzeBtn').onclick = async () => {
     const pasteActive = document.querySelector('.tab.active').dataset.tab === 'paste';
     const text = pasteActive ? $('srcText').value.trim() : currentText.trim();
-    if (!text) { toast('Сначала вставьте текст или загрузите файл.'); return; }
+    if (!text) { toast(T('analyze.emptyText')); return; }
 
     // новый источник = новый чат → проверяем лимит ДО построения (чтобы не жечь
     // вызовы Gemini на граф, который всё равно нельзя будет сохранить)
@@ -1378,7 +1715,7 @@
     $('stageEmpty').classList.add('hidden');
     $('q').disabled = false; $('askBtn').disabled = false;
     // первый прогон использует стартовый вопрос, чтобы сразу построить граф
-    await runAnalyze('О чём этот текст? Дай общую картину.', /*isFirst*/true);
+    await runAnalyze(T('analyze.firstQuestion'), /*isFirst*/true);
   };
 
   // ── ЗАДАТЬ ВОПРОС ──
@@ -1389,7 +1726,7 @@
   function ask(){
     const q = $('q').value.trim();
     if (!q) return;
-    if (!currentText) { toast('Сначала загрузите источник.'); return; }
+    if (!currentText) { toast(T('ask.noSource')); return; }
     $('q').value = '';
     runAnalyze(q, false);
   }
@@ -1431,11 +1768,11 @@
       thinkingEl.remove();
 
       if (!res.ok) {
-        if (res.status === 401) showGate('Сессия истекла — войдите снова.');
+        if (res.status === 401) showGate(T('session.expired'));
         // лёгкий путь сломался (напр. устаревший слепок) → сбрасываем кэш, следующий
         // вопрос пойдёт через полный /api/analyze и пересоберёт документ
         if (useAsk) graphState = null;
-        addErrorMsg(data.detail || 'Не удалось обработать запрос.'); setAsk(true); return;
+        addErrorMsg(data.detail || T('ask.failed')); setAsk(true); return;
       }
 
       if (useAsk) {
@@ -1452,7 +1789,7 @@
       saveChat();
     } catch (err) {
       thinkingEl.remove();
-      addErrorMsg('Нет связи с сервером Lumina. Проверьте, что бэкенд запущен: ' + API_BASE);
+      addErrorMsg(T('ask.noBackend') + API_BASE);
     } finally {
       setAsk(true);
     }
@@ -1619,14 +1956,14 @@
       const togFg = isLightColor(typeColor) ? '#0A0A1A' : '#FFFFFF';
       const toggle = hasKids
         ? `<span class="tnode-toggle" style="background:${typeColor};color:${togFg};"
-             title="${isCollapsed ? 'Развернуть ветку' : 'Свернуть ветку'}">${isCollapsed ? kids.length : '−'}</span>`
+             title="${isCollapsed ? T('graph.expand') : T('graph.collapse')}">${isCollapsed ? kids.length : '−'}</span>`
         : '';
 
       let html = `<div class="tnode-wrap">
         <div class="tnode${hasKids ? ' has-children' : ''}${n.in_answer ? ' in-answer' : ''}"
              data-id="${esc(id)}" data-col="${typeColor}"
              style="background:${bg};border:${n.in_answer ? '2.5px' : '1.5px'} solid ${border};color:${fg};font-size:${fontPx}px;${glow}"
-             title="${esc(n.type)}${n.mentions > 1 ? ' · упоминаний: ' + n.mentions : ''}">${body}${toggle}</div>`;
+             title="${esc(n.type)}${n.mentions > 1 ? T('graph.mentions') + n.mentions : ''}">${body}${toggle}</div>`;
       if (hasKids && !isCollapsed) {
         html += `<div class="tchildren">${kids.map(renderNode).join('')}</div>`;
       }
@@ -1714,13 +2051,13 @@
         `<div class="doc-blk ${b.kind}" data-bid="${esc(b.id)}" style="${box(b.bbox, scale)}"></div>`
       ).join('');
       const figs = (figByPage[pg.index] || []).map(f =>
-        `<div class="doc-fig ${f.kind === 'drawing' ? 'drawing' : 'image'}" data-fid="${esc(f.id)}" title="${f.kind === 'drawing' ? 'Чарт/чертёж' : 'Картинка'} — нажмите, чтобы увеличить" style="${box(f.bbox, scale)}"></div>`
+        `<div class="doc-fig ${f.kind === 'drawing' ? 'drawing' : 'image'}" data-fid="${esc(f.id)}" title="${f.kind === 'drawing' ? T('doc.figChart') : T('doc.figImage')}${T('doc.figZoom')}" style="${box(f.bbox, scale)}"></div>`
       ).join('');
       // image_url — подписанный URL из Storage (заполняет hydrateSpatial);
       // fallback на image (data URL в dev-режиме без Storage).
       const src = pg.image_url || pg.image;
       return `<div class="doc-page" style="width:${pg.image_w}px;">`
-           + `<img src="${src}" width="${pg.image_w}" height="${pg.image_h}" alt="стр. ${pg.index+1}">`
+           + `<img src="${src}" width="${pg.image_w}" height="${pg.image_h}" alt="${T('doc.pageAlt', { n: pg.index + 1 })}">`
            + blks + figs + `</div>`;
     }).join('');
 
@@ -1932,7 +2269,7 @@
     const refs = (lastManifest.links || []).filter(l => l.figure === fid).map(l => l.block);
     if (refs.length) {
       const btn = document.createElement('button');
-      btn.innerHTML = svgIcon('arrowUp', 15) + '<span>Где упоминается в тексте</span>';
+      btn.innerHTML = svgIcon('arrowUp', 15) + '<span>' + esc(T('fig.mentioned')) + '</span>';
       btn.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:7px;width:100%;'
         + 'padding:9px 14px;font:600 13px Inter,sans-serif;background:var(--accent);color:#fff;border:none;cursor:pointer;';
       btn.onclick = (e) => {
@@ -2203,7 +2540,7 @@
   }
   function addThinking(){
     const el = document.createElement('div'); el.className = 'msg bot';
-    el.innerHTML = `<div class="thinking"><span class="d"></span><span class="d"></span><span class="d"></span> Строю граф и рассуждаю…</div>`;
+    el.innerHTML = `<div class="thinking"><span class="d"></span><span class="d"></span><span class="d"></span> ${esc(T('chat.thinking'))}</div>`;
     msgs.appendChild(el); scroll(); return el;
   }
   function addBotMsg(data, noPush){
@@ -2213,7 +2550,7 @@
     const intent = data.explanation && data.explanation.query_intent;
 
     const badge = $('intentBadge');
-    if (intent) { badge.textContent = 'намерение: ' + intent; badge.classList.add('show'); }
+    if (intent) { badge.textContent = T('chat.intent') + intent; badge.classList.add('show'); }
     else badge.classList.remove('show');
 
     const kpts = (a.key_points || []).map(p => `<li>${esc(p)}</li>`).join('');
@@ -2221,22 +2558,22 @@
 
     const el = document.createElement('div'); el.className = 'msg bot';
     el.innerHTML = `<div class="answer">
-      <h4>${esc(a.answer || 'Ответ готов')}</h4>
+      <h4>${esc(a.answer || T('chat.answerReady'))}</h4>
       ${a.summary ? `<div class="summary">${esc(a.summary)}</div>` : ''}
-      ${kpts ? `<div class="kpts-title">Ключевое</div><ul>${kpts}</ul>` : ''}
+      ${kpts ? `<div class="kpts-title">${esc(T('chat.keyPoints'))}</div><ul>${kpts}</ul>` : ''}
     </div>`;
     msgs.appendChild(el); scroll();
   }
   function addErrorMsg(t){
     const el = document.createElement('div'); el.className = 'msg bot';
-    el.innerHTML = `<div class="answer" style="border-color:var(--warn)"><h4 style="color:var(--warn)">Не получилось</h4><div class="summary">${esc(t)}</div></div>`;
+    el.innerHTML = `<div class="answer" style="border-color:var(--warn)"><h4 style="color:var(--warn)">${esc(T('chat.failedTitle'))}</h4><div class="summary">${esc(t)}</div></div>`;
     msgs.appendChild(el); scroll();
   }
 
   function renderStats(s){
     if (!s) return;
     $('stats').innerHTML =
-      `<span>узлов <b>${s.nodes}</b></span><span>связей <b>${s.edges}</b></span><span>слов <b>${s.words}</b></span>`;
+      `<span>${T('stats.nodes')} <b>${s.nodes}</b></span><span>${T('stats.edges')} <b>${s.edges}</b></span><span>${T('stats.words')} <b>${s.words}</b></span>`;
   }
 
   // ── УТИЛИТЫ ──
@@ -2267,7 +2604,7 @@
   function showUser(user){
     currentUserEmail = user.email || '';
     currentUserId = user.id || '';   // для путей в Storage (RLS: первая папка = uid)
-    const name = user.user_metadata?.full_name || user.user_metadata?.name || user.email || 'Пользователь';
+    const name = user.user_metadata?.full_name || user.user_metadata?.name || user.email || T('user.default');
     const avatar = user.user_metadata?.avatar_url || user.user_metadata?.picture;
     $('userName').textContent = name;
     const ava = $('userAva');
@@ -2278,14 +2615,14 @@
 
   // Вход через Google (OAuth Supabase). Возврат — на эту же страницу.
   $('googleSignIn').onclick = async () => {
-    if (!sb) { showGate('Supabase недоступен. Проверьте подключение к интернету.'); return; }
+    if (!sb) { showGate(T('gate.noSupabase')); return; }
     const btn = $('googleSignIn');
     btn.disabled = true;
     const { error } = await sb.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: window.location.href.split('#')[0] }
     });
-    if (error) { btn.disabled = false; $('gateErr').textContent = 'Не удалось войти: ' + error.message; }
+    if (error) { btn.disabled = false; $('gateErr').textContent = T('gate.loginFailed') + error.message; }
   };
 
   // Выход
@@ -2315,7 +2652,7 @@
   // upsert текущего чата после каждого ответа
   async function saveChat(){
     if (!sb || !currentText || !chatMessages.length) return;
-    const firstUser = chatMessages.find(m => m.role === 'user' && !/^О чём этот текст/.test(m.text));
+    const firstUser = chatMessages.find(m => m.role === 'user' && !FIRST_QUESTIONS.includes(m.text) && !/^О чём этот текст/.test(m.text));
     const title = ((firstUser && firstUser.text) || currentText).slice(0, 60);
     const row = { title, source_text: currentText, messages: chatMessages, mindmap: lastGraph };
     // spatial-манифест (только Storage-режим — лёгкий, пути а не data URL). Требует
@@ -2356,21 +2693,21 @@
       const { data, error } = await sb.from('chats')
         .select('id,title,updated_at').order('updated_at', { ascending: false });
       if (error) throw error;
-      if (!data || !data.length) { list.innerHTML = '<div class="chats-empty">Пока нет сохранённых чатов</div>'; return; }
+      if (!data || !data.length) { list.innerHTML = `<div class="chats-empty">${esc(T('chats.empty'))}</div>`; return; }
       list.innerHTML = data.map(c => {
-        const d = new Date(c.updated_at).toLocaleString('ru', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        const d = new Date(c.updated_at).toLocaleString(LOCALE(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
         return `<div class="chat-item" onclick="openChat('${c.id}')">
-          <div class="body"><div class="t">${esc(c.title || 'Без названия')}</div><div class="d">${esc(d)}</div></div>
-          <button class="del" title="Удалить чат" onclick="event.stopPropagation(); deleteChat('${c.id}')">${svgIcon('trash', 15)}</button>
+          <div class="body"><div class="t">${esc(c.title || T('chats.untitled'))}</div><div class="d">${esc(d)}</div></div>
+          <button class="del" title="${esc(T('chats.delete'))}" onclick="event.stopPropagation(); deleteChat('${c.id}')">${svgIcon('trash', 15)}</button>
         </div>`;
       }).join('');
-    } catch (e) { console.error('loadChatList', e); list.innerHTML = '<div class="chats-empty">Не удалось загрузить</div>'; }
+    } catch (e) { console.error('loadChatList', e); list.innerHTML = `<div class="chats-empty">${esc(T('chats.loadFailed'))}</div>`; }
   }
 
   // удалить сохранённый чат (с подтверждением)
   window.deleteChat = async (id) => {
     if (!sb) return;
-    if (!confirm('Удалить этот чат безвозвратно?')) return;
+    if (!confirm(T('chats.confirmDelete'))) return;
     try {
       const { error } = await sb.from('chats').delete().eq('id', id);
       if (error) throw error;
@@ -2384,7 +2721,7 @@
         $('stats').innerHTML = '';
       }
       loadChatList();
-    } catch (e) { console.error('deleteChat', e); toast('Не удалось удалить чат.'); }
+    } catch (e) { console.error('deleteChat', e); toast(T('chats.deleteFailed')); }
   };
 
   // открыть сохранённый чат: восстановить текст, переписку и граф
@@ -2422,7 +2759,7 @@
 
   // Сессия на входе + реакция на логин/логаут
   async function initAuth(){
-    if (!sb) { showGate('Supabase не настроен — вход невозможен.'); return; }
+    if (!sb) { showGate(T('gate.notConfigured')); return; }
     const { data: { session } } = await sb.auth.getSession();
     if (session) { hideGate(); showUser(session.user); warmup(); loadChatList(); }
     else { showGate(); }
@@ -2468,7 +2805,7 @@
   // Отправка
   $('fbSend').onclick = async () => {
     const text = $('fbText').value.trim();
-    if (!text && !fbRating) { toast('Напишите отзыв или поставьте оценку.'); return; }
+    if (!text && !fbRating) { toast(T('fb.empty')); return; }
 
     $('fbSend').disabled = true;
     try {
@@ -2478,13 +2815,13 @@
         body: JSON.stringify({ rating: fbRating, text: text })
       });
       if (res.ok) {
-        $('fbStatus').innerHTML = '<div class="fb-success">✓ Спасибо за отзыв!</div>';
+        $('fbStatus').innerHTML = `<div class="fb-success">${esc(T('fb.thanks'))}</div>`;
         setTimeout(closeFb, 1500);
       } else {
-        toast('Не удалось отправить отзыв. Попробуйте позже.');
+        toast(T('fb.failed'));
       }
     } catch (err) {
-      toast('Нет связи с сервером.');
+      toast(T('err.noConnection'));
     } finally {
       $('fbSend').disabled = false;
     }

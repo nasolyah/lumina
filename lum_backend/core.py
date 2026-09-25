@@ -31,6 +31,46 @@ import requests
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("lumina.core")
 from collections import defaultdict
+import contextvars
+
+# ─── ЯЗЫК ИНТЕРФЕЙСА ──────────────────────────────────────────────────────────
+# Модель отвечает на языке ВЕРСИИ САЙТА (ru/en), а не документа. Язык приходит
+# заголовком X-Lang; эндпоинт вызывает set_lang() в начале запроса. ContextVar —
+# чтобы не протаскивать параметр через весь пайплайн (FastAPI гоняет sync-эндпоинты
+# в threadpool со скопированным контекстом — между запросами язык не протекает).
+# Правило языка добавляется ТОЛЬКО в промпты, чей вывод видит пользователь;
+# извлечение сущностей/память остаются на языке документа (иначе ломается
+# подсветка пути ответа: имена узлов ищутся подстрокой в тексте разделов).
+SUPPORTED_LANGS = ("ru", "en")
+_LANG = contextvars.ContextVar("lumina_lang", default="ru")
+
+
+def set_lang(lang: str | None) -> str:
+    code = (lang or "").strip().lower()[:2]
+    code = code if code in SUPPORTED_LANGS else "ru"
+    _LANG.set(code)
+    return code
+
+
+def get_lang() -> str:
+    return _LANG.get()
+
+
+def tr(ru: str, en: str) -> str:
+    """Короткие строки (фолбэки заголовков и т.п.) на языке интерфейса."""
+    return en if get_lang() == "en" else ru
+
+
+def _lang_rule() -> str:
+    """Хвост системного промпта: на каком языке писать всё, что увидит пользователь."""
+    if get_lang() == "en":
+        return ("\n\nRESPONSE LANGUAGE: write ALL user-facing text in your output (answers, "
+                "titles, summaries, lists, definitions) in ENGLISH, even if the document is in "
+                "another language — translate headings and facts as needed. Keep JSON keys, "
+                "block ids and numbers unchanged.")
+    return ("\n\nЯЗЫК ОТВЕТА: весь текст для пользователя (ответы, заголовки, резюме, списки, "
+            "определения) пиши на РУССКОМ языке, даже если документ на другом языке — "
+            "заголовки и факты при необходимости переводи. Ключи JSON, id блоков и числа не меняй.")
 
 # ─── КОНФИГ ───────────────────────────────────────────────────────────────────
 
@@ -321,11 +361,13 @@ _INFOGRAPHIC_BRIEF_SYSTEM = """Ты готовишь КРАТКИЙ бриф д�
 {"title":"...","points":["...","..."]}"""
 
 
-def _compose_image_prompt(title: str, points: list[str], lang_hint: str = "оригинала документа") -> str:
+def _compose_image_prompt(title: str, points: list[str], lang_hint: str | None = None) -> str:
     """Собирает текстовый промпт для image-модели из брифа.
 
     Палитру НЕ навязываем — просим модель подобрать под тему; упор на официальный,
-    профессиональный, издательского качества результат."""
+    профессиональный, издательского качества результат. Подписи на картинке — на
+    языке интерфейса (бриф уже сгенерирован на нём, см. _lang_rule)."""
+    lang_hint = lang_hint or ("English" if get_lang() == "en" else "Russian")
     pts = "\n".join(f"- {p}" for p in points if (p or "").strip())
     return (
         "Design a PROFESSIONAL, PUBLICATION-GRADE INFOGRAPHIC — the kind used in official "
@@ -342,8 +384,8 @@ def _compose_image_prompt(title: str, points: list[str], lang_hint: str = "ор�
         "Present these key points as distinct, well-organized visual blocks (icon + short label + the "
         "number/stat where present):\n"
         f"{pts}\n"
-        f"Keep all text SHORT, correctly spelled and legible, in the language of the source "
-        f"({lang_hint}). Use ONLY the facts and numbers above — do not invent anything."
+        f"Keep all text SHORT, correctly spelled and legible, written in {lang_hint}. "
+        "Use ONLY the facts and numbers above — do not invent anything."
     )
 
 
@@ -351,7 +393,7 @@ def build_infographic_brief(node_title: str, node_text: str) -> dict:
     """Текст раздела → {title, points[]} (дешёвая модель, строго по тексту)."""
     src = (node_text or "").strip() or node_title
     raw = call_llm(
-        system=_INFOGRAPHIC_BRIEF_SYSTEM,
+        system=_INFOGRAPHIC_BRIEF_SYSTEM + _lang_rule(),
         user=f"РАЗДЕЛ «{node_title}»:\n{src}",
         model=LIGHT_MODEL,
         max_tokens=600,
@@ -360,11 +402,11 @@ def build_infographic_brief(node_title: str, node_text: str) -> dict:
         data = parse_json_lenient(raw)
     except json.JSONDecodeError:
         data = {}
-    title = (data.get("title") or node_title or "Инфографика").strip()[:80]
+    title = (data.get("title") or node_title or tr("Инфографика", "Infographic")).strip()[:80]
     points = [str(p).strip()[:80] for p in (data.get("points") or []) if str(p).strip()][:6]
     if not points:
         # мягкая деградация: хоть что-то отдать image-модели
-        points = [node_title.strip()[:80]] if node_title.strip() else ["Обзор раздела"]
+        points = [node_title.strip()[:80]] if node_title.strip() else [tr("Обзор раздела", "Section overview")]
     return {"title": title, "points": points}
 
 
@@ -735,12 +777,15 @@ TYPE_BOOST = float(os.environ.get("TYPE_BOOST", "0.25"))
 # Порядок важен: первый сработавший маркер выигрывает.
 _INTENT_MARKERS: list[tuple[str, tuple[str, ...]]] = [
     ("person", ("кто ", "кем ", "автор", "предложил", "изобрел", "изобрёл",
-                "создал", "разработал", "who ")),
+                "создал", "разработал", "who ", "whom ", "author", "invented",
+                "proposed", "created by", "developed by")),
     ("method", ("как работает", "каким образом", "как устроен", "механизм",
-                "метод", "алгоритм", "процесс", "how ")),
+                "метод", "алгоритм", "процесс", "how ", "method", "algorithm",
+                "process", "mechanism")),
     ("term",   ("что такое", "что означает", "определение", "чем является",
-                "what is", "define")),
-    ("concept",("почему", "зачем", "в чём смысл", "в чем смысл", "идея", "why ")),
+                "what is", "what are", "what does", "meaning of", "define", "definition")),
+    ("concept",("почему", "зачем", "в чём смысл", "в чем смысл", "идея", "why ",
+                "purpose", "the point of")),
 ]
 
 
@@ -840,7 +885,7 @@ def step6_generate_answer(memory: str, top_nodes: list[dict], query: str,
   "summary": "одно-два предложения, поясняющие суть/связи",
   "key_points": ["важный факт 1", "важный факт 2", "важный факт 3"]
 }
-""",
+""" + _lang_rule(),
         user=f"ГЛОБАЛЬНАЯ ПАМЯТЬ:\n{memory}\n\nФРАГМЕНТЫ ИСТОЧНИКА (дословно):\n{sources_text or '(нет)'}\n\nТОП-УЗЛЫ:\n{nodes_text}\n\nЗАПРОС: {query}",
         model=POWER_MODEL,
     )
@@ -944,7 +989,7 @@ def step_document_sections(text: str, main_topic: str) -> dict | None:
     структуру (не понятия из графа, а сам документ). Возвращает
     {"root":..., "children":[...]} или None, если не удалось."""
     raw = call_llm(
-        system=_SECTIONS_SYSTEM,
+        system=_SECTIONS_SYSTEM + _lang_rule(),
         user=f"ГЛАВНАЯ ТЕМА (ориентир): {main_topic}\n\nТЕКСТ:\n{text}",
         model=POWER_MODEL,
         max_tokens=4000,   # узлы несут цитаты из текста — длиннее обычного ответа
@@ -1000,7 +1045,7 @@ def flatten_sections(data: dict, in_answer_names: set[str]) -> dict:
                           "in_answer": is_ans(ch.get("title", ""), ch.get("excerpt", ""))})
             walk(kids, cid)
 
-    root_id = add(data.get("root") or "Документ", "branch")
+    root_id = add(data.get("root") or tr("Документ", "Document"), "branch")
     walk(data.get("children"), root_id)
     return {"nodes": nodes, "edges": edges, "root": root_id}
 
@@ -1091,7 +1136,7 @@ def build_sections_from_blocks(blocks: list[dict], in_answer_names: set[str]) ->
 
     listing = "\n".join(f"[{b['id']}]{_pos(b)} {by_id[b['id']][:400]}" for b in blocks)
     raw = call_llm(
-        system=_SECTIONS_FROM_BLOCKS_SYSTEM,
+        system=_SECTIONS_FROM_BLOCKS_SYSTEM + _lang_rule(),
         user=f"СТРОКИ ДОКУМЕНТА (по порядку):\n{listing}",
         model=POWER_MODEL,
         max_tokens=8000,   # построчный ввод → в дереве много id, нужен запас на вывод
@@ -1147,7 +1192,7 @@ def build_sections_from_blocks(blocks: list[dict], in_answer_names: set[str]) ->
                           "in_answer": nodes[-1]["in_answer"]})
             walk(kids, cid)
 
-    root_id = add(data.get("root") or "Документ", "branch", [])
+    root_id = add(data.get("root") or tr("Документ", "Document"), "branch", [])
     walk(data.get("children"), root_id)
     if len(nodes) <= 1:
         return None   # модель ничего осмысленного не сгруппировала
@@ -1156,7 +1201,7 @@ def build_sections_from_blocks(blocks: list[dict], in_answer_names: set[str]) ->
     # ничего не теряем, собираем непокрытые (в исходном порядке) в раздел «Прочее».
     missed = [b["id"] for b in blocks if b["id"] not in covered]
     if missed:
-        cid = add("Прочее", "section", missed)
+        cid = add(tr("Прочее", "Other"), "section", missed)
         edges.append({"from": root_id, "to": cid, "label": "",
                       "in_answer": nodes[-1]["in_answer"]})
     return {"nodes": nodes, "edges": edges, "root": root_id}
@@ -1196,7 +1241,7 @@ def answer_for_node(node_title: str, node_text: str, question: str,
     )
     extra = f"\n\nДОП. ФРАГМЕНТЫ ИСТОЧНИКА (дословно из документа):\n{sources_text}" if sources_text else ""
     raw = call_llm(
-        system=_NODE_ANSWER_SYSTEM.format(node_title=node_title),
+        system=_NODE_ANSWER_SYSTEM.format(node_title=node_title) + _lang_rule(),
         user=f"ФРАГМЕНТ РАЗДЕЛА «{node_title}»:\n{node_text}{extra}\n\nВОПРОС: {question}",
         model=POWER_MODEL,
         max_tokens=1200,
@@ -1207,7 +1252,7 @@ def answer_for_node(node_title: str, node_text: str, question: str,
         return None
     if not isinstance(data, dict):
         return None
-    title = (data.get("title") or question or "Ответ").strip()[:80]
+    title = (data.get("title") or question or tr("Ответ", "Answer")).strip()[:80]
     excerpt = (data.get("excerpt") or "").strip()[:400]
     full = (data.get("full") or excerpt).strip()[:1500]
     if not excerpt and not full:
@@ -1250,7 +1295,7 @@ def _batch_world_info(names: list[str]) -> dict[str, str]:
         raw = call_llm(
             system="""Дай КРАТКОЕ общее определение каждого понятия из списка — 1-2 предложения,
 простыми словами, из общих знаний (НЕ из какого-либо текста). Ответь ТОЛЬКО валидным
-JSON без markdown: {"Понятие": "краткое определение", ...}. Ключи — ДОСЛОВНО как в списке.""",
+JSON без markdown: {"Понятие": "краткое определение", ...}. Ключи — ДОСЛОВНО как в списке.""" + _lang_rule(),
             user=f"ПОНЯТИЯ:\n{listing}",
             model=POWER_MODEL,
             max_tokens=2500,

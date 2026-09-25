@@ -21,7 +21,7 @@ import logging
 import requests
 from typing import Optional
 import jwt
-from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
+from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -152,6 +152,20 @@ MAX_PDF_BYTES = int(os.environ.get("MAX_PDF_BYTES", str(15 * 1024 * 1024)))  # 1
 
 # ─── ЭНДПОИНТЫ ────────────────────────────────────────────────────────────────
 
+# ─── ЯЗЫК ВЕРСИИ САЙТА ────────────────────────────────────────────────────────
+# Фронт шлёт X-Lang: ru|en во всех запросах. Модель отвечает на этом языке, ошибки
+# тоже локализуем. ВАЖНО: зависимость лишь ВОЗВРАЩАЕТ код; core.set_lang() вызывает
+# сам эндпоинт — sync-зависимости FastAPI идут в отдельном контексте threadpool, и
+# ContextVar, выставленный там, до тела эндпоинта не дошёл бы.
+def get_lang(x_lang: Optional[str] = Header(None, alias="X-Lang")) -> str:
+    code = (x_lang or "").strip().lower()[:2]
+    return code if code in core.SUPPORTED_LANGS else "ru"
+
+
+def L(lang: str, ru: str, en: str) -> str:
+    return en if lang == "en" else ru
+
+
 @app.get("/")
 def root():
     return {"status": "ok", "service": "lum-api"}
@@ -181,17 +195,19 @@ def health():
 
 
 @app.post("/api/analyze")
-def analyze(req: AnalyzeRequest, user: dict = Depends(require_user)):
+def analyze(req: AnalyzeRequest, user: dict = Depends(require_user), lang: str = Depends(get_lang)):
     """
     Прогоняет текст + вопрос через GraphRAG и возвращает:
       answer, schema, graph (с флагами in_answer), explanation, stats.
     Требует валидный Supabase-JWT (см. require_user).
     """
+    core.set_lang(lang)
     if len(req.text) > MAX_TEXT_CHARS:
         logger.warning("analyze: текст превышает лимит (%d симв.)", len(req.text))
         raise HTTPException(
             status_code=400,
-            detail=f"Текст слишком большой ({len(req.text)} симв., максимум {MAX_TEXT_CHARS}).",
+            detail=L(lang, f"Текст слишком большой ({len(req.text)} симв., максимум {MAX_TEXT_CHARS}).",
+                           f"Text is too large ({len(req.text)} chars, max {MAX_TEXT_CHARS})."),
         )
     blocks = [b.model_dump() for b in req.blocks] if req.blocks else None
     try:
@@ -204,17 +220,18 @@ def analyze(req: AnalyzeRequest, user: dict = Depends(require_user)):
     except Exception as e:
         # Непредвиденное → 500, но без утечки внутренних деталей наружу
         logger.exception("analyze: непредвиденная ошибка")
-        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail=L(lang, "Внутренняя ошибка", "Internal error") + f": {type(e).__name__}")
 
 
 @app.post("/api/ask")
-def ask(req: AskRequest, user: dict = Depends(require_user)):
+def ask(req: AskRequest, user: dict = Depends(require_user), lang: str = Depends(get_lang)):
     """
     Повторный вопрос по УЖЕ построенному документу: только retrieval + ответ
     поверх закэшированного графа (graph_state из первого /api/analyze). Не
     пересобирает сущности/эмбеддинги/дерево — дёшево и дерево не «плавает».
     Возвращает: answer, explanation, in_answer_names (для пересветки дерева).
     """
+    core.set_lang(lang)
     try:
         return core.answer_from_state(req.graph_state, req.query)
     except core.PipelineError as e:
@@ -222,11 +239,11 @@ def ask(req: AskRequest, user: dict = Depends(require_user)):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception("ask: непредвиденная ошибка")
-        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail=L(lang, "Внутренняя ошибка", "Internal error") + f": {type(e).__name__}")
 
 
 @app.post("/api/feedback")
-def submit_feedback(req: FeedbackRequest, user: dict = Depends(require_user)):
+def submit_feedback(req: FeedbackRequest, user: dict = Depends(require_user), lang: str = Depends(get_lang)):
     """
     Сохраняет фидбэк (оценка 1-5 + текст) в таблицу Supabase `feedback`.
 
@@ -262,7 +279,7 @@ def submit_feedback(req: FeedbackRequest, user: dict = Depends(require_user)):
             # Тело ответа Supabase (если есть) поможет отладить схему/RLS в логах Render.
             body = getattr(e.response, "text", "") if getattr(e, "response", None) else ""
             logger.error("feedback: не удалось записать в Supabase: %s %s", e, body)
-            raise HTTPException(status_code=502, detail="Не удалось сохранить отзыв.")
+            raise HTTPException(status_code=502, detail=L(lang, "Не удалось сохранить отзыв.", "Could not save feedback."))
 
     # Фолбэк для локальной разработки (Supabase не настроен).
     entry["timestamp"] = datetime.datetime.utcnow().isoformat()
@@ -272,18 +289,19 @@ def submit_feedback(req: FeedbackRequest, user: dict = Depends(require_user)):
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except OSError as e:
         logger.error("feedback: не удалось записать в файл: %s", e)
-        raise HTTPException(status_code=500, detail="Не удалось сохранить отзыв.")
+        raise HTTPException(status_code=500, detail=L(lang, "Не удалось сохранить отзыв.", "Could not save feedback."))
 
     return {"status": "ok"}
 
 
 @app.post("/api/ask-node")
-def ask_node(req: AskNodeRequest, user: dict = Depends(require_user)):
+def ask_node(req: AskNodeRequest, user: dict = Depends(require_user), lang: str = Depends(get_lang)):
     """
     Саб-чат по конкретной ветке: отвечает на вопрос СТРОГО по контексту одного узла
     и возвращает {title, excerpt, full} для нового узла-ответвления. Один вызов
     модели — не полный пайплайн (быстро/дёшево). Требует валидный Supabase-JWT.
     """
+    core.set_lang(lang)
     try:
         # заземляем на весь документ: топ дословных фрагментов по вопросу (через ключ),
         # а не только текст ветки — чтобы ответ был по документу, не из памяти модели
@@ -297,7 +315,7 @@ def ask_node(req: AskNodeRequest, user: dict = Depends(require_user)):
             question=req.question, sources=sources,
         )
         if not node:
-            raise HTTPException(status_code=400, detail="Не удалось сформировать ответ по этой ветке.")
+            raise HTTPException(status_code=400, detail=L(lang, "Не удалось сформировать ответ по этой ветке.", "Could not answer for this branch."))
         return node
     except core.PipelineError as e:
         logger.error("ask_node: PipelineError: %s", e)
@@ -306,15 +324,16 @@ def ask_node(req: AskNodeRequest, user: dict = Depends(require_user)):
         raise
     except Exception:
         logger.exception("ask_node: непредвиденная ошибка")
-        raise HTTPException(status_code=500, detail="Внутренняя ошибка")
+        raise HTTPException(status_code=500, detail=L(lang, "Внутренняя ошибка", "Internal error"))
 
 
 @app.post("/api/infographic")
-def infographic(req: InfographicRequest, user: dict = Depends(require_user)):
+def infographic(req: InfographicRequest, user: dict = Depends(require_user), lang: str = Depends(get_lang)):
     """
     Генерирует картинку-инфографику по тексту раздела через image-модель Gemini
     (тот же ключ). Возвращает {image (data URL), title, points}. Требует JWT.
     """
+    core.set_lang(lang)
     try:
         return core.generate_infographic(node_title=req.node_title, node_text=req.node_text)
     except core.PipelineError as e:
@@ -322,11 +341,11 @@ def infographic(req: InfographicRequest, user: dict = Depends(require_user)):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
         logger.exception("infographic: непредвиденная ошибка")
-        raise HTTPException(status_code=500, detail="Внутренняя ошибка")
+        raise HTTPException(status_code=500, detail=L(lang, "Внутренняя ошибка", "Internal error"))
 
 
 @app.post("/api/extract")
-async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(require_user)):
+async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(require_user), lang: str = Depends(get_lang)):
     """
     Принимает PDF или презентацию .pptx, возвращает извлечённый текст:
     {text, chars, pages, kind}. Парсинг на бэке надёжнее браузерного; фронт затем
@@ -337,14 +356,14 @@ async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(require
     is_pdf = filename.endswith(".pdf") or ct == "application/pdf"
     is_pptx = filename.endswith(".pptx") or ct == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     if not (is_pdf or is_pptx):
-        raise HTTPException(status_code=400, detail="Ожидается PDF (.pdf) или презентация (.pptx).")
+        raise HTTPException(status_code=400, detail=L(lang, "Ожидается PDF (.pdf) или презентация (.pptx).", "Expected a PDF (.pdf) or a presentation (.pptx)."))
 
     raw = await file.read()
     if not raw:
-        raise HTTPException(status_code=400, detail="Пустой файл.")
+        raise HTTPException(status_code=400, detail=L(lang, "Пустой файл.", "The file is empty."))
     if len(raw) > MAX_PDF_BYTES:
         mb = MAX_PDF_BYTES // (1024 * 1024)
-        raise HTTPException(status_code=400, detail=f"Файл слишком большой (макс. {mb} МБ).")
+        raise HTTPException(status_code=400, detail=L(lang, f"Файл слишком большой (макс. {mb} МБ).", f"The file is too large (max {mb} MB)."))
 
     # ── Презентация .pptx ── (только текст → граф; spatial/вырезки не строим)
     if is_pptx:
@@ -352,9 +371,9 @@ async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(require
             text, slides = core.extract_pptx_text(raw)
         except Exception as e:
             logger.warning("extract: pptx parse failed: %s", e)
-            raise HTTPException(status_code=400, detail=f"Не удалось разобрать презентацию: {type(e).__name__}")
+            raise HTTPException(status_code=400, detail=L(lang, "Не удалось разобрать презентацию", "Could not parse the presentation") + f": {type(e).__name__}")
         if not text:
-            raise HTTPException(status_code=400, detail="В презентации не нашлось текста для разбора.")
+            raise HTTPException(status_code=400, detail=L(lang, "В презентации не нашлось текста для разбора.", "No text found in the presentation."))
         return {"text": text, "chars": len(text), "pages": slides, "kind": "pptx", "ocr": False}
 
     try:
@@ -365,7 +384,7 @@ async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(require
             try:
                 reader.decrypt("")
             except Exception:
-                raise HTTPException(status_code=400, detail="PDF защищён паролем — снимите защиту.")
+                raise HTTPException(status_code=400, detail=L(lang, "PDF защищён паролем — снимите защиту.", "The PDF is password-protected — please remove the password."))
         pages = len(reader.pages)
         parts = []
         for page in reader.pages:
@@ -376,7 +395,7 @@ async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(require
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Не удалось разобрать PDF: {type(e).__name__}")
+        raise HTTPException(status_code=400, detail=L(lang, "Не удалось разобрать PDF", "Could not parse the PDF") + f": {type(e).__name__}")
 
     # Скан без текстового слоя: pdfplumber/pypdf почти ничего не дали (< ~15 симв/стр).
     # Тогда распознаём страницы через Gemini Vision (OCR). ВАЖНО: тут пиксели уходят
@@ -393,7 +412,8 @@ async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(require
     if not text:
         raise HTTPException(
             status_code=400,
-            detail="Из PDF не удалось извлечь текст — это скан без текстового слоя, и OCR не дал результата.",
+            detail=L(lang, "Из PDF не удалось извлечь текст — это скан без текстового слоя, и OCR не дал результата.",
+                           "Could not extract text from the PDF — it is a scan without a text layer and OCR returned nothing."),
         )
 
     return {"text": text, "chars": len(text), "pages": pages, "kind": "pdf", "ocr": ocr_used}
@@ -414,7 +434,7 @@ def _prune_ingest_jobs():
         _INGEST_JOBS.pop(jid, None)
 
 
-def _run_ingest(job_id: str, raw: bytes, sink, doc_id: str, image_kind: str, bucket):
+def _run_ingest(job_id: str, raw: bytes, sink, doc_id: str, image_kind: str, bucket, lang: str = "ru"):
     """Фоновая сборка манифеста; результат/ошибка кладётся в _INGEST_JOBS[job_id]."""
     job = _INGEST_JOBS.get(job_id)
     if job is None:
@@ -423,7 +443,7 @@ def _run_ingest(job_id: str, raw: bytes, sink, doc_id: str, image_kind: str, buc
         import spatial
         manifest = spatial.build_manifest(raw, image_sink=sink)
         if not manifest["pages"]:
-            job.update(status="error", error="PDF без страниц или нечитаемый.", ts=time.time())
+            job.update(status="error", error=L(lang, "PDF без страниц или нечитаемый.", "The PDF has no pages or is unreadable."), ts=time.time())
             return
         manifest["doc_id"] = doc_id
         manifest["image_kind"] = image_kind
@@ -431,11 +451,11 @@ def _run_ingest(job_id: str, raw: bytes, sink, doc_id: str, image_kind: str, buc
         job.update(status="done", manifest=manifest, ts=time.time())
     except Exception as e:
         logger.exception("ingest job: не удалось построить манифест")
-        job.update(status="error", error=f"Не удалось разобрать PDF: {type(e).__name__}", ts=time.time())
+        job.update(status="error", error=L(lang, "Не удалось разобрать PDF", "Could not parse the PDF") + f": {type(e).__name__}", ts=time.time())
 
 
 @app.post("/api/ingest")
-async def ingest_pdf(file: UploadFile = File(...), user: dict = Depends(require_user)):
+async def ingest_pdf(file: UploadFile = File(...), user: dict = Depends(require_user), lang: str = Depends(get_lang)):
     """
     Spatial-режим: PDF → фоновая сборка манифеста. Возвращает {job_id, status} сразу;
     фронт поллит /api/ingest/{job_id}. Импорт spatial ленивый — без зависимостей
@@ -444,20 +464,20 @@ async def ingest_pdf(file: UploadFile = File(...), user: dict = Depends(require_
     filename = (file.filename or "").lower()
     is_pdf = filename.endswith(".pdf") or file.content_type == "application/pdf"
     if not is_pdf:
-        raise HTTPException(status_code=400, detail="Ожидается PDF-файл (.pdf).")
+        raise HTTPException(status_code=400, detail=L(lang, "Ожидается PDF-файл (.pdf).", "Expected a PDF file (.pdf)."))
 
     raw = await file.read()
     if not raw:
-        raise HTTPException(status_code=400, detail="Пустой файл.")
+        raise HTTPException(status_code=400, detail=L(lang, "Пустой файл.", "The file is empty."))
     if len(raw) > MAX_PDF_BYTES:
         mb = MAX_PDF_BYTES // (1024 * 1024)
-        raise HTTPException(status_code=400, detail=f"Файл слишком большой (макс. {mb} МБ).")
+        raise HTTPException(status_code=400, detail=L(lang, f"Файл слишком большой (макс. {mb} МБ).", f"The file is too large (max {mb} MB)."))
 
     try:
         import spatial  # noqa: F401 — проверяем наличие зависимостей до запуска задачи
     except ImportError as e:
         logger.error("ingest: зависимости spatial не установлены: %s", e)
-        raise HTTPException(status_code=501, detail="Spatial-режим недоступен на сервере.")
+        raise HTTPException(status_code=501, detail=L(lang, "Spatial-режим недоступен на сервере.", "Document view is unavailable on the server."))
 
     # Персист: если Storage настроен (SPATIAL_STORAGE=1 + ключи), картинки страниц
     # льём в приватный бакет, а в манифест пишем пути; иначе — data URL как раньше.
@@ -476,22 +496,22 @@ async def ingest_pdf(file: UploadFile = File(...), user: dict = Depends(require_
     _INGEST_JOBS[job_id] = {"status": "processing", "manifest": None,
                             "error": None, "user": user.get("sub"), "ts": time.time()}
     threading.Thread(target=_run_ingest,
-                     args=(job_id, raw, sink, doc_id, image_kind, bucket),
+                     args=(job_id, raw, sink, doc_id, image_kind, bucket, lang),
                      daemon=True).start()
     return {"job_id": job_id, "status": "processing"}
 
 
 @app.get("/api/ingest/{job_id}")
-def ingest_status(job_id: str, user: dict = Depends(require_user)):
+def ingest_status(job_id: str, user: dict = Depends(require_user), lang: str = Depends(get_lang)):
     """Статус фоновой задачи: {status:'processing'} | манифест (готово) | 400 (ошибка)."""
     job = _INGEST_JOBS.get(job_id)
     if not job or job["user"] != user.get("sub"):
-        raise HTTPException(status_code=404, detail="Задача не найдена.")
+        raise HTTPException(status_code=404, detail=L(lang, "Задача не найдена.", "Job not found."))
     if job["status"] == "processing":
         return {"status": "processing"}
     if job["status"] == "error":
         _INGEST_JOBS.pop(job_id, None)
-        raise HTTPException(status_code=400, detail=job.get("error") or "Ошибка разбора PDF.")
+        raise HTTPException(status_code=400, detail=job.get("error") or L(lang, "Ошибка разбора PDF.", "PDF processing failed."))
     # done — отдаём манифест и освобождаем память
     manifest = job.get("manifest")
     _INGEST_JOBS.pop(job_id, None)

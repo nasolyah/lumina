@@ -5,6 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lumina — AI для ваших знаний</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%236C63FF%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23A78BFA%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%228%22%20fill%3D%22%230A0A1A%22%2F%3E%3Cpath%20d%3D%22M16%205l2.6%208.4L27%2016l-8.4%202.6L16%2027l-2.6-8.4L5%2016l8.4-2.6z%22%20fill%3D%22url(%23g)%22%2F%3E%3C%2Fsvg%3E">
+<script>
+  // Язык версии сайта: ?lang= → сохранённый выбор (общий с лендингом) → язык браузера
+  // (ru → русская версия, иначе английская). Ставим ДО отрисовки, чтобы английская
+  // версия не мигала русским текстом (body скрыт, пока applyI18n не отработает).
+  window.__LANG = (function () {
+    try {
+      var q = new URLSearchParams(location.search).get('lang');
+      if (q === 'ru' || q === 'en') { localStorage.setItem('lumina_lang', q); return q; }
+      var s = localStorage.getItem('lumina_lang');
+      if (s === 'ru' || s === 'en') return s;
+    } catch (e) {}
+    var l = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+    return String(l).toLowerCase().indexOf('ru') === 0 ? 'ru' : 'en';
+  })();
+  document.documentElement.lang = window.__LANG;
+  if (window.__LANG !== 'ru') {
+    document.documentElement.classList.add('i18n-pending');
+    setTimeout(function () { document.documentElement.classList.remove('i18n-pending'); }, 2500); // страховка
+  }
+</script>
+<style>html.i18n-pending body { visibility: hidden; }</style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=Inter:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -270,6 +291,15 @@
   .feat-card.center-last { grid-column: 2; }
   @media (max-width: 900px) { .features-grid { grid-template-columns: 1fr 1fr; } .feat-card.center-last { grid-column: auto; } }
   @media (max-width: 580px) { .features-grid { grid-template-columns: 1fr; } }
+
+
+  /* ── Переключатель языка RU/EN ── */
+  .lang-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    font-family: 'Inter', sans-serif; font-weight: 600; font-size: 0.78rem; letter-spacing: .04em;
+    padding: 8px 12px; border-radius: 999px; cursor: pointer; transition: color .2s, border-color .2s;
+  }
+  .lang-btn:hover { color: var(--text); border-color: rgba(108,99,255,0.45); }
 
   /* ── МОБИЛЬНАЯ АДАПТАЦИЯ (навигация, отступы, размер заголовка) ── */
   @media (max-width: 720px) {
@@ -684,16 +714,16 @@
 <div class="overlay" id="overlay"></div>
 
 <!-- ─── SIDEBAR ─────────────────────────────── -->
-<aside class="sidebar" id="sidebar" role="dialog" aria-label="Вход в систему">
+<aside class="sidebar" id="sidebar" role="dialog" aria-label="Вход в систему" data-i18n-aria="side.aria">
   <div class="sidebar-header">
     <div class="logo"><div class="logo-dot"></div>Lumina</div>
-    <button class="sidebar-close" id="sidebarClose" aria-label="Закрыть">✕</button>
+    <button class="sidebar-close" id="sidebarClose" aria-label="Закрыть" data-i18n-aria="common.close">✕</button>
   </div>
 
   <div class="sidebar-body">
     <div class="sidebar-logo-mark">✦</div>
-    <div class="sidebar-title">Добро пожаловать</div>
-    <div class="sidebar-sub">Войдите, чтобы начать работу<br>со своими знаниями</div>
+    <div class="sidebar-title" data-i18n="side.title">Добро пожаловать</div>
+    <div class="sidebar-sub" data-i18n-html="side.sub">Войдите, чтобы начать работу<br>со своими знаниями</div>
 
     <!-- Google OAuth button — подключить Supabase -->
     <button class="google-btn" id="googleSignIn" onclick="handleGoogleSignIn()">
@@ -703,16 +733,16 @@
         <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
         <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
       </svg>
-      Войти через Google
+      <span data-i18n="side.google">Войти через Google</span>
     </button>
 
-    <div class="divider"><span>или</span></div>
+    <div class="divider"><span data-i18n="side.or">или</span></div>
 
-    <button class="btn-ghost" style="width:100%;border-radius:12px;padding:14px 20px;text-align:center;" disabled>
+    <button class="btn-ghost" style="width:100%;border-radius:12px;padding:14px 20px;text-align:center;" disabled data-i18n="side.email">
       Войти по email — скоро
     </button>
 
-    <p class="sidebar-note">
+    <p class="sidebar-note" data-i18n-html="side.note">
       Продолжая, вы соглашаетесь с<br>
       <a href="#">Условиями использования</a> и <a href="#">Политикой конфиденциальности</a>
     </p>
@@ -725,35 +755,36 @@
   <nav>
     <div class="logo"><div class="logo-dot"></div>Lumina</div>
     <ul class="nav-links">
-      <li><a href="#features">Возможности</a></li>
-      <li><a href="#how">Как это работает</a></li>
-      <li><a href="#why">Почему мы</a></li>
-      <li><a href="#pricing">Цены</a></li>
+      <li><a href="#features" data-i18n="nav.features">Возможности</a></li>
+      <li><a href="#how"><span data-i18n="nav.how">Как это работает</span></a></li>
+      <li><a href="#why" data-i18n="nav.why">Почему мы</a></li>
+      <li><a href="#pricing" data-i18n="nav.pricing">Цены</a></li>
     </ul>
     <div class="nav-actions">
+      <button class="lang-btn" id="langBtn" type="button"></button>
       <button class="btn-logout" id="logoutBtn" onclick="handleSignOut()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        Выйти
+        <span data-i18n="nav.logout">Выйти</span>
       </button>
-      <button class="btn-primary btn-start" onclick="openSidebar()">Начать бесплатно</button>
+      <button class="btn-primary btn-start" onclick="openSidebar()" data-i18n="cta.start">Начать бесплатно</button>
     </div>
   </nav>
 
   <!-- HERO -->
   <section class="hero">
 
-    <h1>
+    <h1 data-i18n-html="hero.title">
       Ваши документы<br>становятся<br>
       <span class="accent-word">живыми знаниями</span>
     </h1>
 
-    <p class="hero-sub">
+    <p class="hero-sub" data-i18n="hero.sub">
       Загрузите текст, PDF или презентацию — Lumina разберёт документ на карту знаний и ответит на вопросы, показывая, откуда взялся каждый вывод.
     </p>
 
     <div class="hero-cta">
-      <button class="btn-primary btn-start" onclick="openSidebar()">Начать бесплатно →</button>
-      <a class="btn-ghost" href="#how" style="text-decoration:none;display:inline-block;">Как это работает</a>
+      <button class="btn-primary btn-start" onclick="openSidebar()" data-i18n="cta.startArrow">Начать бесплатно →</button>
+      <a class="btn-ghost" href="#how" style="text-decoration:none;display:inline-block;"><span data-i18n="hero.how">Как это работает</span></a>
     </div>
   </section>
 
@@ -761,80 +792,80 @@
   <div class="strip">
     <div class="strip-item">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-      PDF, TXT, Markdown
+      PDF, PPTX, TXT, Markdown
     </div>
     <div class="strip-item">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-      Глубокий анализ источников
+      <span data-i18n="strip.deep">Глубокий анализ источников</span>
     </div>
     <div class="strip-item">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-      Связи между идеями
+      <span data-i18n="strip.links">Связи между идеями</span>
     </div>
     <div class="strip-item">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-      Разборы приватны
+      <span data-i18n="strip.private">Разборы приватны</span>
     </div>
     <div class="strip-item">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-      Виден путь к ответу
+      <span data-i18n="strip.path">Виден путь к ответу</span>
     </div>
   </div>
 
   <!-- FEATURES -->
   <section class="section" id="features">
-    <div class="section-label">Возможности</div>
-    <h2 class="section-title">Всё, что нужно для работы с информацией</h2>
+    <div class="section-label" data-i18n="feat.label">Возможности</div>
+    <h2 class="section-title" data-i18n="feat.title">Всё, что нужно для работы с информацией</h2>
 
     <div class="features-grid">
       <div class="feat-card">
         <div class="feat-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/></svg>
         </div>
-        <h3>Текст, PDF и презентации</h3>
-        <p>Вставьте текст или загрузите файл — .txt, .md, PDF или презентацию .pptx до 15 МБ. Lumina разберёт документ и построит по нему карту знаний.</p>
+        <h3 data-i18n="feat.1.t">Текст, PDF и презентации</h3>
+        <p data-i18n="feat.1.p">Вставьте текст или загрузите файл — .txt, .md, PDF или презентацию .pptx до 15 МБ. Lumina разберёт документ и построит по нему карту знаний.</p>
       </div>
       <div class="feat-card">
         <div class="feat-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="10" x2="9" y2="10"/><line x1="12" y1="10" x2="12" y2="10"/><line x1="15" y1="10" x2="15" y2="10"/></svg>
         </div>
-        <h3>Диалог с источником</h3>
-        <p>Задавайте вопросы на естественном языке. В ответе — суть, ключевые факты и путь к ответу: видно, через какие узлы карты он получен.</p>
+        <h3 data-i18n="feat.2.t">Диалог с источником</h3>
+        <p data-i18n="feat.2.p">Задавайте вопросы на естественном языке. В ответе — суть, ключевые факты и путь к ответу: видно, через какие узлы карты он получен.</p>
       </div>
       <div class="feat-card">
         <div class="feat-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
         </div>
-        <h3>Карта знаний</h3>
-        <p>Автоматически строит граф связей между концепциями из ваших источников. Видите, как идеи соотносятся друг с другом.</p>
+        <h3 data-i18n="feat.3.t">Карта знаний</h3>
+        <p data-i18n="feat.3.p">Автоматически строит граф связей между концепциями из ваших источников. Видите, как идеи соотносятся друг с другом.</p>
       </div>
       <div class="feat-card">
         <div class="feat-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
         </div>
-        <h3>Саб-чат по любой ветке</h3>
-        <p>Кликните раздел на карте и спросите именно про него. Ответ станет новой веткой, растущей из этого раздела — карта углубляется там, где вам нужно.</p>
+        <h3 data-i18n="feat.4.t">Саб-чат по любой ветке</h3>
+        <p data-i18n="feat.4.p">Кликните раздел на карте и спросите именно про него. Ответ станет новой веткой, растущей из этого раздела — карта углубляется там, где вам нужно.</p>
       </div>
       <div class="feat-card">
         <div class="feat-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2-2-2H4c-1.25 0-2 .75-2 2v9c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2-2-2h-4c-1.25 0-2 .75-2 2v9c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v1z"/></svg>
         </div>
-        <h3>Цитата из источника</h3>
-        <p>Клик по любому узлу — и виден точный фрагмент исходного текста, откуда он взят. Плюс краткая справка о самом понятии.</p>
+        <h3 data-i18n="feat.5.t">Цитата из источника</h3>
+        <p data-i18n="feat.5.p">Клик по любому узлу — и виден точный фрагмент исходного текста, откуда он взят. Плюс краткая справка о самом понятии.</p>
       </div>
       <div class="feat-card">
         <div class="feat-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><polyline points="12 7 12 12 15 14"/></svg>
         </div>
-        <h3>История разборов</h3>
-        <p>Каждый разбор сохраняется вместе с картой и перепиской. Вернитесь через неделю — всё на месте, можно продолжить с того же места.</p>
+        <h3 data-i18n="feat.6.t">История разборов</h3>
+        <p data-i18n="feat.6.p">Каждый разбор сохраняется вместе с картой и перепиской. Вернитесь через неделю — всё на месте, можно продолжить с того же места.</p>
       </div>
       <div class="feat-card center-last">
         <div class="feat-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 16v-4"/><path d="M12 16V8"/><path d="M17 16v-6"/></svg>
         </div>
-        <h3>Инфографика по разделу</h3>
-        <p>Одним кликом превращайте любой раздел карты в наглядную инфографику: ИИ выделяет ключевые факты и рисует аккуратную картинку, которую можно скачать.</p>
+        <h3 data-i18n="feat.7.t">Инфографика по разделу</h3>
+        <p data-i18n="feat.7.p">Одним кликом превращайте любой раздел карты в наглядную инфографику: ИИ выделяет ключевые факты и рисует аккуратную картинку, которую можно скачать.</p>
       </div>
     </div>
   </section>
@@ -842,24 +873,24 @@
   <!-- HOW IT WORKS -->
   <div class="how-section" id="how">
     <section class="section" style="padding-top:80px;padding-bottom:80px;">
-      <div class="section-label">Как это работает</div>
-      <h2 class="section-title">Три шага до ответа</h2>
+      <div class="section-label"><span data-i18n="how.label">Как это работает</span></div>
+      <h2 class="section-title" data-i18n="how.title">Три шага до ответа</h2>
 
       <div class="steps">
         <div class="step">
           <div class="step-num">01</div>
-          <h3>Загрузите источник</h3>
-          <p>Вставьте текст или загрузите файл — .txt, .md, PDF или презентацию .pptx. Один документ за раз, до 100 000 символов.</p>
+          <h3 data-i18n="how.1.t">Загрузите источник</h3>
+          <p data-i18n="how.1.p">Вставьте текст или загрузите файл — .txt, .md, PDF или презентацию .pptx. Один документ за раз, до 100 000 символов.</p>
         </div>
         <div class="step">
           <div class="step-num">02</div>
-          <h3>Lumina строит карту</h3>
-          <p>AI разбирает документ на его настоящие смысловые разделы и выстраивает из них карту знаний — слева направо, от общего к частному.</p>
+          <h3 data-i18n="how.2.t">Lumina строит карту</h3>
+          <p data-i18n="how.2.p">AI разбирает документ на его настоящие смысловые разделы и выстраивает из них карту знаний — слева направо, от общего к частному.</p>
         </div>
         <div class="step">
           <div class="step-num">03</div>
-          <h3>Спрашивайте и углубляйтесь</h3>
-          <p>Задавайте общие вопросы в чате или кликайте ветку и спрашивайте про неё — ответ станет новой веткой карты.</p>
+          <h3 data-i18n="how.3.t">Спрашивайте и углубляйтесь</h3>
+          <p data-i18n="how.3.p">Задавайте общие вопросы в чате или кликайте ветку и спрашивайте про неё — ответ станет новой веткой карты.</p>
         </div>
       </div>
     </section>
@@ -867,15 +898,15 @@
 
   <!-- WHY US / COMPARISON -->
   <section class="section" id="why">
-    <div class="section-label">Почему мы</div>
-    <h2 class="section-title" style="margin-bottom:20px;">Сравнение по ключевым параметрам</h2>
-    <p style="color:var(--muted);font-size:0.95rem;margin-bottom:40px;max-width:640px;">Ниже — короткая справочная таблица, которая показывает, чем подход Lumina отличается от привычных чат-инструментов вроде Google NotebookLM.</p>
+    <div class="section-label" data-i18n="why.label">Почему мы</div>
+    <h2 class="section-title" style="margin-bottom:20px;" data-i18n="why.title">Сравнение по ключевым параметрам</h2>
+    <p style="color:var(--muted);font-size:0.95rem;margin-bottom:40px;max-width:640px;" data-i18n="why.sub">Ниже — короткая справочная таблица, которая показывает, чем подход Lumina отличается от привычных чат-инструментов вроде Google NotebookLM.</p>
 
     <div class="compare-wrap">
       <table class="compare-table">
         <thead>
           <tr>
-            <th scope="col">Критерий</th>
+            <th scope="col" data-i18n="cmp.head">Критерий</th>
             <th scope="col" class="col-us">
               <div class="compare-logo"><span class="dot"></span> Lumina</div>
             </th>
@@ -884,29 +915,29 @@
         </thead>
         <tbody>
           <tr>
-            <th scope="row">Основной интерфейс</th>
-            <td class="col-us">Бесконечный холст — пространственная карта знаний</td>
-            <td>Чат и текстовые документы — линейный формат</td>
+            <th scope="row" data-i18n="cmp.1.k">Основной интерфейс</th>
+            <td class="col-us" data-i18n="cmp.1.us">Бесконечный холст — пространственная карта знаний</td>
+            <td data-i18n="cmp.1.them">Чат и текстовые документы — линейный формат</td>
           </tr>
           <tr>
-            <th scope="row">Работа с контентом</th>
-            <td class="col-us">Сохраняет исходную структуру, фрагменты текста и изображения как в первоисточнике</td>
-            <td>Пересобирает и переписывает контент в саммари, гайды и ответы</td>
+            <th scope="row" data-i18n="cmp.2.k">Работа с контентом</th>
+            <td class="col-us" data-i18n="cmp.2.us">Сохраняет исходную структуру, фрагменты текста и изображения как в первоисточнике</td>
+            <td data-i18n="cmp.2.them">Пересобирает и переписывает контент в саммари, гайды и ответы</td>
           </tr>
           <tr>
-            <th scope="row">Визуальные элементы</th>
-            <td class="col-us">Извлекает и связывает с текстом графики, диаграммы и изображения; формулы показывает без искажений, а по любому разделу генерирует инфографику</td>
-            <td>В основном игнорирует сложные визуальные элементы или не справляется с ними</td>
+            <th scope="row" data-i18n="cmp.3.k">Визуальные элементы</th>
+            <td class="col-us" data-i18n="cmp.3.us">Извлекает и связывает с текстом графики, диаграммы и изображения; формулы показывает без искажений, а по любому разделу генерирует инфографику</td>
+            <td data-i18n="cmp.3.them">В основном игнорирует сложные визуальные элементы или не справляется с ними</td>
           </tr>
           <tr>
-            <th scope="row">Навигация</th>
-            <td class="col-us">Масштабирование, панорамирование, переход по узлам и связям карты</td>
-            <td>Промпты, переписка в чате, прокрутка текстовых блоков</td>
+            <th scope="row" data-i18n="cmp.4.k">Навигация</th>
+            <td class="col-us" data-i18n="cmp.4.us">Масштабирование, панорамирование, переход по узлам и связям карты</td>
+            <td data-i18n="cmp.4.them">Промпты, переписка в чате, прокрутка текстовых блоков</td>
           </tr>
           <tr>
-            <th scope="row">Цель пользователя</th>
-            <td class="col-us">Понять структуру и логику аргументации автора</td>
-            <td>Найти конкретный ответ или получить общее саммари по теме</td>
+            <th scope="row" data-i18n="cmp.5.k">Цель пользователя</th>
+            <td class="col-us" data-i18n="cmp.5.us">Понять структуру и логику аргументации автора</td>
+            <td data-i18n="cmp.5.them">Найти конкретный ответ или получить общее саммари по теме</td>
           </tr>
         </tbody>
       </table>
@@ -915,62 +946,278 @@
 
   <!-- PRICING -->
   <section class="section" id="pricing">
-    <div class="section-label">Цены</div>
-    <h2 class="section-title">Начните бесплатно, растите по мере надобности</h2>
+    <div class="section-label" data-i18n="price.label">Цены</div>
+    <h2 class="section-title" data-i18n="price.title">Начните бесплатно, растите по мере надобности</h2>
 
     <div class="pricing-grid">
       <div class="price-card">
-        <div class="price-badge active">Доступно сейчас</div>
+        <div class="price-badge active" data-i18n="price.now">Доступно сейчас</div>
         <h3>Free</h3>
-        <div class="price-sub">Чтобы попробовать без риска</div>
+        <div class="price-sub" data-i18n="price.freeSub">Чтобы попробовать без риска</div>
         <div class="price-amount">$0</div>
         <ul class="price-features">
-          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> 5 построений графа знаний</li>
-          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Диалог с источником</li>
-          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Explainable-ответы с подсветкой пути</li>
-          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Саб-чат по любой ветке графа</li>
-          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Сохранение истории чатов</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="price.f1"> 5 построений графа знаний</span></li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="price.f2"> Диалог с источником</span></li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="price.f3"> Explainable-ответы с подсветкой пути</span></li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="price.f4"> Саб-чат по любой ветке графа</span></li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="price.f5"> Сохранение истории чатов</span></li>
         </ul>
-        <button class="btn-primary" onclick="openSidebar()">Начать бесплатно</button>
+        <button class="btn-primary" onclick="openSidebar()" data-i18n="cta.start">Начать бесплатно</button>
       </div>
 
       <div class="price-card featured">
-        <div class="price-badge soon">Скоро</div>
+        <div class="price-badge soon" data-i18n="price.soon">Скоро</div>
         <h3>Pro</h3>
-        <div class="price-sub">Для тех, кому нужно больше</div>
-        <div class="price-amount">$5<span>/месяц</span></div>
+        <div class="price-sub" data-i18n="price.proSub">Для тех, кому нужно больше</div>
+        <div class="price-amount">$5<span data-i18n="price.month">/месяц</span></div>
         <ul class="price-features">
-          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Неограниченные построения графа</li>
-          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Всё из плана Free</li>
-          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Приоритет в очереди на обработку</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="price.p1"> Неограниченные построения графа</span></li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="price.p2"> Всё из плана Free</span></li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="price.p3"> Приоритет в очереди на обработку</span></li>
         </ul>
-        <a class="btn-ghost" style="width:100%;text-align:center;padding:12px 20px;display:block;box-sizing:border-box;" href="mailto:markingmark33@gmail.com?subject=Lumina%20Pro">Оставить заявку</a>
+        <a class="btn-ghost" style="width:100%;text-align:center;padding:12px 20px;display:block;box-sizing:border-box;" href="mailto:markingmark33@gmail.com?subject=Lumina%20Pro" data-i18n="price.request">Оставить заявку</a>
       </div>
     </div>
   </section>
 
   <!-- CTA -->
   <div class="cta-banner">
-    <h2>Готовы работать со знаниями умнее?</h2>
-    <p>Бесплатный старт без карты. Первые 5 построений графа — бесплатно.</p>
-    <button class="btn-primary btn-start" onclick="openSidebar()" style="padding:15px 36px;font-size:1rem;border-radius:14px;">
+    <h2 data-i18n="cta.title">Готовы работать со знаниями умнее?</h2>
+    <p data-i18n="cta.sub">Бесплатный старт без карты. Первые 5 построений графа — бесплатно.</p>
+    <button class="btn-primary btn-start" onclick="openSidebar()" style="padding:15px 36px;font-size:1rem;border-radius:14px;" data-i18n="cta.try">
       Попробовать Lumina →
     </button>
   </div>
 
   <footer>
     <div class="logo"><div class="logo-dot"></div>Lumina</div>
-    <p>© 2025 Lumina AI. Все права защищены.</p>
+    <p data-i18n="foot.rights">© 2025 Lumina AI. Все права защищены.</p>
     <div style="display:flex;gap:24px;">
-      <a href="#" style="font-size:0.82rem;color:var(--muted);text-decoration:none;">Условия</a>
-      <a href="#" style="font-size:0.82rem;color:var(--muted);text-decoration:none;">Конфиденциальность</a>
-      <a href="#" style="font-size:0.82rem;color:var(--muted);text-decoration:none;">Контакты</a>
+      <a href="#" style="font-size:0.82rem;color:var(--muted);text-decoration:none;" data-i18n="foot.terms">Условия</a>
+      <a href="#" style="font-size:0.82rem;color:var(--muted);text-decoration:none;" data-i18n="foot.privacy">Конфиденциальность</a>
+      <a href="#" style="font-size:0.82rem;color:var(--muted);text-decoration:none;" data-i18n="foot.contacts">Контакты</a>
     </div>
   </footer>
 
 </div><!-- /page-wrap -->
 
 <script>
+  // ── I18N: русская и английская версии лендинга ─────────────────────────────
+  // Язык выбран в <head> (window.__LANG). Ключ lumina_lang общий с приложением —
+  // выбор на лендинге переносится в app.html. data-i18n → textContent,
+  // data-i18n-html → innerHTML (только доверенные строки из словаря ниже).
+  const I18N = { ru: {
+      "doc.title": "Lumina — AI для ваших знаний",
+      "side.aria": "Вход в систему",
+      "common.close": "Закрыть",
+      "side.title": "Добро пожаловать",
+      "side.sub": "Войдите, чтобы начать работу<br>со своими знаниями",
+      "side.google": "Войти через Google",
+      "side.or": "или",
+      "side.email": "Войти по email — скоро",
+      "side.note": "Продолжая, вы соглашаетесь с<br>\n      <a href=\"#\">Условиями использования</a> и <a href=\"#\">Политикой конфиденциальности</a>",
+      "nav.features": "Возможности",
+      "nav.why": "Почему мы",
+      "nav.pricing": "Цены",
+      "nav.logout": "Выйти",
+      "nav.how": "Как это работает",
+      "hero.how": "Как это работает",
+      "how.label": "Как это работает",
+      "cta.start": "Начать бесплатно",
+      "cta.startArrow": "Начать бесплатно →",
+      "hero.title": "Ваши документы<br>становятся<br>\n      <span class=\"accent-word\">живыми знаниями</span>",
+      "hero.sub": "Загрузите текст, PDF или презентацию — Lumina разберёт документ на карту знаний и ответит на вопросы, показывая, откуда взялся каждый вывод.",
+      "strip.deep": "Глубокий анализ источников",
+      "strip.links": "Связи между идеями",
+      "strip.private": "Разборы приватны",
+      "strip.path": "Виден путь к ответу",
+      "feat.title": "Всё, что нужно для работы с информацией",
+      "feat.label": "Возможности",
+      "feat.1.t": "Текст, PDF и презентации",
+      "feat.1.p": "Вставьте текст или загрузите файл — .txt, .md, PDF или презентацию .pptx до 15 МБ. Lumina разберёт документ и построит по нему карту знаний.",
+      "feat.2.t": "Диалог с источником",
+      "feat.2.p": "Задавайте вопросы на естественном языке. В ответе — суть, ключевые факты и путь к ответу: видно, через какие узлы карты он получен.",
+      "feat.3.t": "Карта знаний",
+      "feat.3.p": "Автоматически строит граф связей между концепциями из ваших источников. Видите, как идеи соотносятся друг с другом.",
+      "feat.4.t": "Саб-чат по любой ветке",
+      "feat.4.p": "Кликните раздел на карте и спросите именно про него. Ответ станет новой веткой, растущей из этого раздела — карта углубляется там, где вам нужно.",
+      "feat.5.t": "Цитата из источника",
+      "feat.5.p": "Клик по любому узлу — и виден точный фрагмент исходного текста, откуда он взят. Плюс краткая справка о самом понятии.",
+      "feat.6.t": "История разборов",
+      "feat.6.p": "Каждый разбор сохраняется вместе с картой и перепиской. Вернитесь через неделю — всё на месте, можно продолжить с того же места.",
+      "feat.7.t": "Инфографика по разделу",
+      "feat.7.p": "Одним кликом превращайте любой раздел карты в наглядную инфографику: ИИ выделяет ключевые факты и рисует аккуратную картинку, которую можно скачать.",
+      "how.title": "Три шага до ответа",
+      "how.1.t": "Загрузите источник",
+      "how.1.p": "Вставьте текст или загрузите файл — .txt, .md, PDF или презентацию .pptx. Один документ за раз, до 100 000 символов.",
+      "how.2.t": "Lumina строит карту",
+      "how.2.p": "AI разбирает документ на его настоящие смысловые разделы и выстраивает из них карту знаний — слева направо, от общего к частному.",
+      "how.3.t": "Спрашивайте и углубляйтесь",
+      "how.3.p": "Задавайте общие вопросы в чате или кликайте ветку и спрашивайте про неё — ответ станет новой веткой карты.",
+      "why.label": "Почему мы",
+      "why.title": "Сравнение по ключевым параметрам",
+      "why.sub": "Ниже — короткая справочная таблица, которая показывает, чем подход Lumina отличается от привычных чат-инструментов вроде Google NotebookLM.",
+      "cmp.head": "Критерий",
+      "cmp.1.k": "Основной интерфейс",
+      "cmp.1.us": "Бесконечный холст — пространственная карта знаний",
+      "cmp.1.them": "Чат и текстовые документы — линейный формат",
+      "cmp.2.k": "Работа с контентом",
+      "cmp.2.us": "Сохраняет исходную структуру, фрагменты текста и изображения как в первоисточнике",
+      "cmp.2.them": "Пересобирает и переписывает контент в саммари, гайды и ответы",
+      "cmp.3.k": "Визуальные элементы",
+      "cmp.3.us": "Извлекает и связывает с текстом графики, диаграммы и изображения; формулы показывает без искажений, а по любому разделу генерирует инфографику",
+      "cmp.3.them": "В основном игнорирует сложные визуальные элементы или не справляется с ними",
+      "cmp.4.k": "Навигация",
+      "cmp.4.us": "Масштабирование, панорамирование, переход по узлам и связям карты",
+      "cmp.4.them": "Промпты, переписка в чате, прокрутка текстовых блоков",
+      "cmp.5.k": "Цель пользователя",
+      "cmp.5.us": "Понять структуру и логику аргументации автора",
+      "cmp.5.them": "Найти конкретный ответ или получить общее саммари по теме",
+      "price.label": "Цены",
+      "price.title": "Начните бесплатно, растите по мере надобности",
+      "price.now": "Доступно сейчас",
+      "price.freeSub": "Чтобы попробовать без риска",
+      "price.f1": " 5 построений графа знаний",
+      "price.f2": " Диалог с источником",
+      "price.f3": " Explainable-ответы с подсветкой пути",
+      "price.f4": " Саб-чат по любой ветке графа",
+      "price.f5": " Сохранение истории чатов",
+      "price.soon": "Скоро",
+      "price.proSub": "Для тех, кому нужно больше",
+      "price.month": "/месяц",
+      "price.p1": " Неограниченные построения графа",
+      "price.p2": " Всё из плана Free",
+      "price.p3": " Приоритет в очереди на обработку",
+      "price.request": "Оставить заявку",
+      "cta.title": "Готовы работать со знаниями умнее?",
+      "cta.sub": "Бесплатный старт без карты. Первые 5 построений графа — бесплатно.",
+      "cta.try": "Попробовать Lumina →",
+      "foot.rights": "© 2025 Lumina AI. Все права защищены.",
+      "foot.terms": "Условия",
+      "foot.privacy": "Конфиденциальность",
+      "foot.contacts": "Контакты",
+      "lang.switch": "Switch to English",
+      "js.noSupabase": "Supabase не настроен. Укажи SUPABASE_URL в коде.",
+      "js.loginFailed": "Не удалось войти: ",
+      "js.logoutFailed": "Не удалось выйти: "
+}, en: {
+      "doc.title": "Lumina — AI for your knowledge",
+      "side.aria": "Sign in",
+      "common.close": "Close",
+      "side.title": "Welcome",
+      "side.sub": "Sign in to start working<br>with your knowledge",
+      "side.google": "Continue with Google",
+      "side.or": "or",
+      "side.email": "Sign in with email — coming soon",
+      "side.note": "By continuing, you agree to the<br><a href=\"#\">Terms of Use</a> and <a href=\"#\">Privacy Policy</a>",
+      "nav.features": "Features",
+      "nav.why": "Why us",
+      "nav.pricing": "Pricing",
+      "nav.logout": "Sign out",
+      "nav.how": "How it works",
+      "hero.how": "How it works",
+      "how.label": "How it works",
+      "cta.start": "Get started free",
+      "cta.startArrow": "Get started free →",
+      "hero.title": "Your documents<br>become<br><span class=\"accent-word\">living knowledge</span>",
+      "hero.sub": "Upload text, a PDF or a presentation — Lumina turns the document into a knowledge map and answers your questions, showing where every conclusion comes from.",
+      "strip.deep": "Deep source analysis",
+      "strip.links": "Connections between ideas",
+      "strip.private": "Your analyses stay private",
+      "strip.path": "See the path to every answer",
+      "feat.title": "Everything you need to work with information",
+      "feat.label": "Features",
+      "feat.1.t": "Text, PDFs and presentations",
+      "feat.1.p": "Paste text or upload a file — .txt, .md, PDF or a .pptx presentation up to 15 MB. Lumina analyzes the document and builds a knowledge map from it.",
+      "feat.2.t": "Chat with your source",
+      "feat.2.p": "Ask questions in plain language. Every answer gives you the gist, the key facts and the path to it — you can see which nodes of the map it came from.",
+      "feat.3.t": "Knowledge map",
+      "feat.3.p": "Automatically builds a graph of connections between the concepts in your sources, so you can see how ideas relate to each other.",
+      "feat.4.t": "Sub-chat on any branch",
+      "feat.4.p": "Click a section on the map and ask about it specifically. The answer becomes a new branch growing out of that section — the map gets deeper exactly where you need it.",
+      "feat.5.t": "Quotes from the source",
+      "feat.5.p": "Click any node to see the exact fragment of the original text it came from, plus a short explanation of the concept itself.",
+      "feat.6.t": "Analysis history",
+      "feat.6.p": "Every analysis is saved together with its map and conversation. Come back a week later — it’s all still there, ready to pick up where you left off.",
+      "feat.7.t": "Infographics for any section",
+      "feat.7.p": "Turn any section of the map into a clear infographic in one click: AI picks out the key facts and draws a polished image you can download.",
+      "how.title": "Three steps to an answer",
+      "how.1.t": "Upload a source",
+      "how.1.p": "Paste text or upload a file — .txt, .md, PDF or a .pptx presentation. One document at a time, up to 100,000 characters.",
+      "how.2.t": "Lumina builds the map",
+      "how.2.p": "AI breaks the document down into its real sections of meaning and arranges them into a knowledge map — left to right, from the general to the specific.",
+      "how.3.t": "Ask and go deeper",
+      "how.3.p": "Ask general questions in the chat, or click a branch and ask about it — the answer becomes a new branch on the map.",
+      "why.label": "Why us",
+      "why.title": "How we compare",
+      "why.sub": "A quick reference table showing how Lumina’s approach differs from familiar chat tools like Google NotebookLM.",
+      "cmp.head": "Criterion",
+      "cmp.1.k": "Main interface",
+      "cmp.1.us": "An infinite canvas — a spatial knowledge map",
+      "cmp.1.them": "Chat and text documents — a linear format",
+      "cmp.2.k": "Handling content",
+      "cmp.2.us": "Keeps the original structure, text fragments and images exactly as in the source",
+      "cmp.2.them": "Reassembles and rewrites content into summaries, guides and answers",
+      "cmp.3.k": "Visual elements",
+      "cmp.3.us": "Extracts charts, diagrams and images and links them to the text; shows formulas without distortion and generates an infographic for any section",
+      "cmp.3.them": "Mostly ignores complex visual elements or struggles with them",
+      "cmp.4.k": "Navigation",
+      "cmp.4.us": "Zoom, pan and move across the nodes and links of the map",
+      "cmp.4.them": "Prompts, chat history and scrolling through blocks of text",
+      "cmp.5.k": "User goal",
+      "cmp.5.us": "Understand the structure and logic of the author’s argument",
+      "cmp.5.them": "Find a specific answer or get a general summary of a topic",
+      "price.label": "Pricing",
+      "price.title": "Start free, grow as you need",
+      "price.now": "Available now",
+      "price.freeSub": "Try it risk-free",
+      "price.f1": " 5 knowledge map builds",
+      "price.f2": " Chat with your source",
+      "price.f3": " Explainable answers with a highlighted path",
+      "price.f4": " Sub-chat on any branch of the map",
+      "price.f5": " Saved chat history",
+      "price.soon": "Coming soon",
+      "price.proSub": "For those who need more",
+      "price.month": "/month",
+      "price.p1": " Unlimited map builds",
+      "price.p2": " Everything in Free",
+      "price.p3": " Priority processing",
+      "price.request": "Request access",
+      "cta.title": "Ready to work with knowledge smarter?",
+      "cta.sub": "Free start, no card required. Your first 5 map builds are on us.",
+      "cta.try": "Try Lumina →",
+      "foot.rights": "© 2025 Lumina AI. All rights reserved.",
+      "foot.terms": "Terms",
+      "foot.privacy": "Privacy",
+      "foot.contacts": "Contact",
+      "lang.switch": "Переключить на русский",
+      "js.noSupabase": "Supabase is not configured (SUPABASE_URL).",
+      "js.loginFailed": "Sign-in failed: ",
+      "js.logoutFailed": "Sign-out failed: "
+} };
+  let LANG = (window.__LANG === 'en') ? 'en' : 'ru';
+  function T(key){
+    const v = I18N[LANG] && I18N[LANG][key];
+    return v != null ? v : (I18N.ru[key] != null ? I18N.ru[key] : key);
+  }
+  function applyI18n(){
+    document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = T(el.dataset.i18n); });
+    document.querySelectorAll('[data-i18n-html]').forEach(el => { el.innerHTML = T(el.dataset.i18nHtml); });
+    document.querySelectorAll('[data-i18n-aria]').forEach(el => { el.setAttribute('aria-label', T(el.dataset.i18nAria)); });
+    document.title = T('doc.title');
+    document.documentElement.lang = LANG;
+    const lb = document.getElementById('langBtn');
+    if (lb) { lb.textContent = LANG === 'ru' ? 'EN' : 'RU'; lb.title = T('lang.switch'); lb.setAttribute('aria-label', T('lang.switch')); }
+    document.documentElement.classList.remove('i18n-pending');
+  }
+  function setLang(next){
+    LANG = next === 'en' ? 'en' : 'ru';
+    try { localStorage.setItem('lumina_lang', LANG); } catch (_) {}
+    applyI18n();
+  }
+  document.getElementById('langBtn').onclick = () => setLang(LANG === 'ru' ? 'en' : 'ru');
+  applyI18n();
+
   /* ── SIDEBAR ── */
   function openSidebar() {
     document.body.classList.add('sidebar-open');
@@ -1007,7 +1254,7 @@
   /* ── GOOGLE SIGN IN через Supabase OAuth ── */
   async function handleGoogleSignIn() {
     if (!sb) {
-      alert('Supabase не настроен. Укажи SUPABASE_URL в коде.');
+      alert(T('js.noSupabase'));
       return;
     }
     const { error } = await sb.auth.signInWithOAuth({
@@ -1020,7 +1267,7 @@
 
     if (error) {
       console.error('Ошибка входа:', error.message);
-      alert('Не удалось войти: ' + error.message);
+      alert(T('js.loginFailed') + error.message);
     }
     // дальше — редирект на Google, страница перезагрузится
   }
@@ -1035,7 +1282,7 @@
 
     if (error) {
       console.error('Ошибка выхода:', error.message);
-      alert('Не удалось выйти: ' + error.message);
+      alert(T('js.logoutFailed') + error.message);
       if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
       return;
     }
@@ -1059,6 +1306,7 @@
     // Пример: меняем кнопку "Начать бесплатно" на аватар/имя
     const startButtons = document.querySelectorAll('.btn-start');
     startButtons.forEach(btn => {
+      delete btn.dataset.i18n;   // теперь тут имя пользователя — смена языка его не трогает
       btn.textContent = user.user_metadata?.full_name || user.email;
       btn.onclick = () => { window.location.href = 'app.html'; };
     });
