@@ -29,8 +29,12 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_SECRET_KEY = os.environ.get("SUPABASE_SECRET_KEY", "")
 
 # ─── ЛИМИТЫ ───────────────────────────────────────────────────────────────────
-INFOGRAPHIC_MONTHLY_LIMIT = int(os.environ.get("INFOGRAPHIC_MONTHLY_LIMIT", "10"))
-UNLIMITED_INFOGRAPHIC_PLANS = {"max"}          # тариф с безлимитной инфографикой
+# картинок в месяц по тарифу; None — без лимита. Free — инфографики нет вовсе.
+INFOGRAPHIC_LIMITS = {
+    "free": int(os.environ.get("INFOGRAPHIC_LIMIT_FREE", "0")),
+    "pro":  int(os.environ.get("INFOGRAPHIC_LIMIT_PRO", "10")),
+    "max":  None,
+}
 OWNER_EMAILS = {e.strip().lower() for e in
                 os.environ.get("OWNER_EMAILS", "markingmark33@gmail.com").split(",") if e.strip()}
 
@@ -204,10 +208,12 @@ def infographics_used_this_month(user_id: str) -> int:
 
 
 def infographic_quota(user: dict) -> dict:
-    """{plan, used, limit (None = безлимит), left (None = безлимит)}."""
+    """{plan, used, limit (None = безлимит, 0 = недоступно на тарифе), left}."""
     plan = user_plan(user)
+    limit = INFOGRAPHIC_LIMITS.get(plan, INFOGRAPHIC_LIMITS["free"])
+    if limit == 0:          # на тарифе инфографики нет — таблицу не спрашиваем
+        return {"plan": plan, "used": 0, "limit": 0, "left": 0}
     used = infographics_used_this_month(user.get("sub"))
-    if plan in UNLIMITED_INFOGRAPHIC_PLANS:
+    if limit is None:
         return {"plan": plan, "used": used, "limit": None, "left": None}
-    limit = INFOGRAPHIC_MONTHLY_LIMIT
     return {"plan": plan, "used": used, "limit": limit, "left": max(0, limit - used)}

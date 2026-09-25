@@ -1174,6 +1174,12 @@
       'infoLimit.cta': 'Запросить доступ к Max',
       'infoLimit.subject': 'Lumina Max: хочу доступ',
       'infoLimit.note': 'Уже созданные инфографики остаются в своих разделах.',
+      'info.planOnly': 'Инфографика доступна в тарифах Pro и Max',
+      'infoPlan.title': 'Инфографика — в тарифах Pro и Max',
+      'infoPlan.offer': 'В Pro — 10 инфографик в месяц, в Max — без ограничений. Напишите нам, и мы откроем доступ.',
+      'infoPlan.cta': 'Запросить доступ',
+      'infoPlan.subject': 'Lumina: хочу доступ к инфографике',
+      'infoPlan.note': 'Карта, вопросы и документ на бесплатном тарифе работают как раньше.',
       'pay.note': 'Созданные графы остаются доступны в «Мои чаты». Удаление чата не возвращает слот.',
       'fb.title': 'Оставить отзыв',
       'fb.sub': 'Расскажите, что понравилось или что можно улучшить.',
@@ -1312,6 +1318,12 @@
       'infoLimit.cta': 'Request Max access',
       'infoLimit.subject': 'Lumina Max: access request',
       'infoLimit.note': 'Infographics you’ve already made stay in their sections.',
+      'info.planOnly': 'Infographics are available on the Pro and Max plans',
+      'infoPlan.title': 'Infographics are on Pro and Max',
+      'infoPlan.offer': 'Pro includes 10 infographics a month, Max has no limit. Write to us and we’ll open access.',
+      'infoPlan.cta': 'Request access',
+      'infoPlan.subject': 'Lumina: infographics access request',
+      'infoPlan.note': 'The map, questions and document view work on the free plan as before.',
       'pay.note': 'Maps you’ve created stay in “My chats”. Deleting a chat doesn’t free up a slot.',
       'fb.title': 'Leave feedback',
       'fb.sub': 'Tell us what you liked or what we could do better.',
@@ -1764,7 +1776,7 @@
       if (!res.ok) {
         if (res.status === 401) showGate(T('session.expired'));
         const d = data.detail;
-        if (res.status === 402 && d && d.code === 'INFOGRAPHIC_LIMIT') {
+        if (res.status === 402 && d && (d.code === 'INFOGRAPHIC_LIMIT' || d.code === 'INFOGRAPHIC_PLAN')) {
           $('figOverlay').classList.remove('open');
           infoQuota = { ...(infoQuota || {}), used: d.used, limit: d.limit, left: 0 };
           renderInfoQuota();
@@ -1957,7 +1969,8 @@
   function renderInfoQuota(){
     const el = $('infoQuota');
     if (DEMO || !infoQuota || infoQuota.limit == null) { el.style.display = 'none'; return; }
-    el.textContent = T('info.quota', { left: infoQuota.left, limit: infoQuota.limit });
+    el.textContent = infoQuota.limit === 0 ? T('info.planOnly')
+                   : T('info.quota', { left: infoQuota.left, limit: infoQuota.limit });
     el.style.display = '';
   }
   async function refreshInfoQuota(){
@@ -1968,7 +1981,8 @@
     } catch (_) {}
   }
   function openInfoLimit(used, limit){
-    setPaywall('infoLimit', T('infoLimit.text', { used, limit }));
+    if (limit === 0) setPaywall('infoPlan', T('info.planOnly') + '.');   // Free: инфографики нет
+    else setPaywall('infoLimit', T('infoLimit.text', { used, limit }));
   }
   function closePaywall(){ paywallOverlay.classList.remove('open'); }
   $('paywallClose').onclick = closePaywall;

@@ -348,11 +348,17 @@ def infographic(req: InfographicRequest, user: dict = Depends(require_user), lan
     """
     Генерирует картинку-инфографику по тексту раздела через image-модель Gemini
     (тот же ключ). Возвращает {image (data URL), title, points, quota}. Требует JWT.
-    Лимит: INFOGRAPHIC_MONTHLY_LIMIT картинок в месяц (кроме тарифа max и владельца) —
-    считается по usage_events, превышение → 402 с кодом INFOGRAPHIC_LIMIT.
+    Доступ по тарифу (usage.INFOGRAPHIC_LIMITS): free — нет (402 INFOGRAPHIC_PLAN),
+    pro — 10 в месяц по usage_events (402 INFOGRAPHIC_LIMIT), max и владелец — без лимита.
     """
     core.set_lang(lang)
     quota = usage.infographic_quota(user)
+    if quota["limit"] == 0:
+        raise HTTPException(status_code=402, detail={
+            "code": "INFOGRAPHIC_PLAN", "used": 0, "limit": 0,
+            "message": L(lang, "Инфографика доступна в тарифах Pro и Max.",
+                               "Infographics are available on the Pro and Max plans."),
+        })
     if quota["limit"] is not None and quota["used"] >= quota["limit"]:
         raise HTTPException(status_code=402, detail={
             "code": "INFOGRAPHIC_LIMIT", "used": quota["used"], "limit": quota["limit"],
