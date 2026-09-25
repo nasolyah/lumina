@@ -1952,7 +1952,8 @@
     // состояние НЕ трогаем — юзер мог уже что-то раскрыть.
     if (!preserveView) {
       collapsed = new Set();
-      for (const [id, lvl] of level) {
+      // небольшую карту (короткий документ) показываем целиком — сворачивать нечего
+      if (graph.nodes.length > 30) for (const [id, lvl] of level) {
         if (lvl >= 1 && (children.get(id) || []).length) collapsed.add(id);
       }
       // но путь к ответу видно сразу: разворачиваем всех предков in_answer-узлов
