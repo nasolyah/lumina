@@ -202,10 +202,10 @@
      не может (в отличие от vis-network, где высоту карточек надо было угадывать). */
   .tree-forest { --h-gap: 90px; display: flex; flex-direction: column; gap: 40px; width: max-content; }
   .tnode-wrap { display: flex; flex-direction: row; align-items: center; gap: var(--h-gap); position: relative; }
-  /* Узлы — плашки-маркеры: только заголовок, сдержанное скругление 8px,
+  /* Узлы — «пилюли» (как в NotebookLM): только заголовок, сильное скругление,
      компактно. Полный текст раздела открывается по клику в модалке. */
   .tnode {
-    flex: none; cursor: pointer; border-radius: 8px; padding: 9px 16px;
+    flex: none; cursor: pointer; border-radius: 999px; padding: 9px 16px;
     max-width: 240px; font-family: var(--font-ui); position: relative; z-index: 1;
     transition: transform .15s, box-shadow .15s;
   }
