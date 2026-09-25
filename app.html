@@ -1757,7 +1757,7 @@
         if (ingestPromise) { try { await ingestPromise; } catch (_) {} }
         // PDF: шлём блоки манифеста → узлы графа придут с их block_ids (точная привязка)
         const blocks = (lastManifest && lastManifest.blocks)
-          ? lastManifest.blocks.map(b => ({ id: b.id, text: b.text, page: b.page, bbox: b.bbox })) : undefined;
+          ? lastManifest.blocks.map(b => ({ id: b.id, text: b.text, page: b.page, bbox: b.bbox, kind: b.kind })) : undefined;
         res = await fetch(API_BASE + '/api/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
@@ -2229,23 +2229,37 @@
   // одной картинкой, как кусок страницы. Не пытаемся угадать «правильную» колонку —
   // если в раздел попали чужие блоки, это дефект ГРУППИРОВКИ (лечится на бэке), а не
   // вырезки. Показываем ровно то, что в разделе.
+  // Вырезка раздела: по куску с КАЖДОЙ страницы, где есть его строки (абзац может
+  // переходить через разрыв страницы), куски друг под другом в порядке страниц.
+  // Диапазон по x общий для всех кусков (min x0 … max x1) — одинаковый масштаб,
+  // шрифт не «прыгает» между страницами. Фигуры, задетые куском, включаем целиком.
   function sectionCropEl(node, maxW){
     const bs = nodeBlocks(node).filter(b => b.bbox);
     if (!bs.length) return null;
-    const page = bs[0].page;
-    const same = bs.filter(b => b.page === page);
-    if (!same.length) return null;
-    let x0 = Math.min(...same.map(b => b.bbox[0]));
-    let top = Math.min(...same.map(b => b.bbox[1]));
-    let x1 = Math.max(...same.map(b => b.bbox[2]));
-    let bottom = Math.max(...same.map(b => b.bbox[3]));
-    (lastManifest.figures || []).forEach(f => {
-      if (f.page === page && f.bbox && f.bbox[3] >= top - 5 && f.bbox[1] <= bottom + 5) {
-        x0 = Math.min(x0, f.bbox[0]); top = Math.min(top, f.bbox[1]);
-        x1 = Math.max(x1, f.bbox[2]); bottom = Math.max(bottom, f.bbox[3]);
-      }
-    });
-    return blockCropEl({ page, bbox: [x0, top, x1, bottom] }, maxW);
+    const pages = [...new Set(bs.map(b => b.page))].sort((a, b) => a - b);
+    const gx0 = Math.min(...bs.map(b => b.bbox[0]));
+    const gx1 = Math.max(...bs.map(b => b.bbox[2]));
+    const pieces = [];
+    for (const page of pages) {
+      const same = bs.filter(b => b.page === page);
+      let x0 = gx0, x1 = gx1;
+      let top = Math.min(...same.map(b => b.bbox[1]));
+      let bottom = Math.max(...same.map(b => b.bbox[3]));
+      (lastManifest.figures || []).forEach(f => {
+        if (f.page === page && f.bbox && f.bbox[3] >= top - 5 && f.bbox[1] <= bottom + 5) {
+          x0 = Math.min(x0, f.bbox[0]); top = Math.min(top, f.bbox[1]);
+          x1 = Math.max(x1, f.bbox[2]); bottom = Math.max(bottom, f.bbox[3]);
+        }
+      });
+      const el = blockCropEl({ page, bbox: [x0, top, x1, bottom] }, maxW);
+      if (el) pieces.push(el);
+    }
+    if (!pieces.length) return null;
+    if (pieces.length === 1) return pieces[0];
+    const wrap = document.createElement('div');   // зазор между кусками = видимый разрыв страницы
+    wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;';
+    pieces.forEach(p => wrap.appendChild(p));
+    return wrap;
   }
 
   // клик по фигуре в «Документе» → лайтбокс с увеличенной вырезкой + подпись

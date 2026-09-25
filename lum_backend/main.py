@@ -103,6 +103,7 @@ class Block(BaseModel):
     text: str = ""
     page: Optional[int] = None
     bbox: Optional[list[float]] = None   # [x0, top, x1, bottom] в пунктах (для колонок)
+    kind: Optional[str] = None           # heading | text — заголовок не бывает продолжением абзаца
 
 
 class AnalyzeRequest(BaseModel):

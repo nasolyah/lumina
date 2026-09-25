@@ -1102,6 +1102,10 @@ _SECTIONS_FROM_BLOCKS_SYSTEM = """Ты сегментируешь докумен
 - порядок сохраняй; 4-8 разделов верхнего уровня — не мельчи и не склеивай всё в один;
 - НЕ смешивай в одном разделе РАЗНЫЕ таблицы/факультеты/подтемы, даже если они рядом
   на странице (напр. «Faculty of Architecture» и «HKU Business School» — РАЗНЫЕ разделы);
+- РАЗРЫВ СТРАНИЦЫ — НЕ граница раздела. Строка с пометкой «⤷ПРОДОЛЖЕНИЕ_АБЗАЦА»
+  продолжает абзац (часто — середину предложения) с предыдущей страницы: относи её И
+  идущие за ней строки этого абзаца к ТОМУ ЖЕ разделу, что и последние строки
+  предыдущей страницы;
 - у строк указана позиция «@стрN xM yK». Строки с СИЛЬНО разным x на одной странице —
   это РАЗНЫЕ КОЛОНКИ (соседние таблицы); НЕ клади их в один раздел. Внутри раздела
   x примерно одинаков (одна колонка).
@@ -1114,6 +1118,53 @@ _SECTIONS_FROM_BLOCKS_SYSTEM = """Ты сегментируешь докумен
    ]},
    {"title":"Другой раздел","block_ids":["b4","b5"]}
  ]}"""
+
+
+# ─── РАЗРЫВ СТРАНИЦЫ ≠ КОНЕЦ АБЗАЦА ───────────────────────────────────────────
+# Абзац часто переходит на следующую страницу («…используют позиционное
+# кодирование,» ↵ новая страница ↵ «добавляемое к эмбеддингам…»). Модель видит смену
+# @стрN и режет раздел по границе страницы — продолжение теряется. Детектим такие
+# строки детерминированно: предыдущая страница кончилась НЕ концом предложения, а
+# новая начинается не с заголовка. Колонтитулы (номер страницы и т.п.) пропускаем.
+_PAGE_FURNITURE_RE = re.compile(
+    r"^\s*(\d{1,4}|[ivxlcdm]{1,6}|(стр\.?|page|p\.)\s*\d{1,4}|\d{1,4}\s*(/|из|of)\s*\d{1,4})\s*$", re.I)
+_SENT_END_RE = re.compile(r"[.!?…][»\"”’)\]]*\s*$")
+
+
+def _page_continuations(blocks: list[dict]) -> dict[str, str]:
+    """{id первой строки продолжения на новой странице: id последней текстовой строки
+    предыдущей страницы}. Только для блоков с координатами (PDF)."""
+    real = [b for b in blocks
+            if b.get("page") is not None and b.get("bbox")
+            and not _PAGE_FURNITURE_RE.match((b.get("text") or "").strip())]
+    out = {}
+    for prev, cur in zip(real, real[1:]):
+        if cur["page"] == prev["page"]:
+            continue
+        if cur.get("kind") == "heading" or prev.get("kind") == "heading":
+            continue
+        if _SENT_END_RE.search((prev.get("text") or "").strip()):
+            continue
+        out[cur["id"]] = prev["id"]
+    return out
+
+
+def _continuation_paragraph(blocks: list[dict], start_idx: int) -> list[str]:
+    """Строки абзаца-продолжения, начиная со start_idx: та же страница и колонка, без
+    абзацного отступа по вертикали и до первого заголовка."""
+    first = blocks[start_idx]
+    x0 = first["bbox"][0]
+    line_h = max(first["bbox"][3] - first["bbox"][1], 1.0)
+    ids, prev = [first["id"]], first
+    for b in blocks[start_idx + 1:]:
+        if b.get("page") != first.get("page") or not b.get("bbox") or b.get("kind") == "heading":
+            break
+        if b["bbox"][1] - prev["bbox"][3] > max(line_h * 0.9, 4.0):   # абзацный отступ
+            break
+        if abs(b["bbox"][0] - x0) > 40:                                # другая колонка
+            break
+        ids.append(b["id"]); prev = b
+    return ids
 
 
 def build_sections_from_blocks(blocks: list[dict], in_answer_names: set[str]) -> dict | None:
@@ -1134,7 +1185,12 @@ def build_sections_from_blocks(blocks: list[dict], in_answer_names: set[str]) ->
             return ""
         return f" @стр{(b.get('page') or 0) + 1} x{int(bb[0])} y{int(bb[1])}"
 
-    listing = "\n".join(f"[{b['id']}]{_pos(b)} {by_id[b['id']][:400]}" for b in blocks)
+    # строки, продолжающие абзац с предыдущей страницы, — явная метка для модели
+    conts = _page_continuations(blocks)
+    CONT = " ⤷ПРОДОЛЖЕНИЕ_АБЗАЦА"
+    listing = "\n".join(
+        f"[{b['id']}]{_pos(b)}{CONT if b['id'] in conts else ''} {by_id[b['id']][:400]}" for b in blocks
+    )
     raw = call_llm(
         system=_SECTIONS_FROM_BLOCKS_SYSTEM + _lang_rule(),
         user=f"СТРОКИ ДОКУМЕНТА (по порядку):\n{listing}",
@@ -1204,6 +1260,49 @@ def build_sections_from_blocks(blocks: list[dict], in_answer_names: set[str]) ->
         cid = add(tr("Прочее", "Other"), "section", missed)
         edges.append({"from": root_id, "to": cid, "label": "",
                       "in_answer": nodes[-1]["in_answer"]})
+
+    # страховка разрыва страницы: если модель всё-таки отрезала продолжение абзаца
+    # (отнесла его к другому разделу или в «Прочее») — возвращаем абзац-продолжение
+    # в раздел последней строки предыдущей страницы. Детерминированно, не по модели.
+    if conts:
+        order = {b["id"]: i for i, b in enumerate(blocks)}
+        owner = {}                                   # id строки → узел (последний = самый глубокий)
+        for n in nodes:
+            for i in n["block_ids"]:
+                owner[i] = n
+        changed = set()
+        for cid_line, prev_line in conts.items():
+            target = owner.get(prev_line)
+            if target is None or owner.get(cid_line) is target:
+                continue
+            for line in _continuation_paragraph(blocks, order[cid_line]):
+                src = owner.get(line)
+                if src is target:
+                    continue
+                if src is not None:
+                    src["block_ids"] = [i for i in src["block_ids"] if i != line]
+                    changed.add(src["id"])
+                target["block_ids"].append(line)
+                owner[line] = target
+            target["block_ids"].sort(key=lambda i: order.get(i, 0))
+            changed.add(target["id"])
+        if changed:
+            for n in nodes:
+                if n["id"] in changed:
+                    full = block_text(n["block_ids"])
+                    n["excerpt"], n["full"] = full[:400], full[:1500]
+                    n["in_answer"] = is_ans(n["name"], full)
+            # лист, у которого после переноса не осталось строк, — убираем вместе с ребром
+            parents = {e["from"] for e in edges}
+            empty = {n["id"] for n in nodes
+                     if n["id"] != root_id and not n["block_ids"] and n["id"] not in parents}
+            nodes = [n for n in nodes if n["id"] not in empty]
+            edges = [e for e in edges if e["to"] not in empty]
+            by_nid = {n["id"]: n for n in nodes}
+            for e in edges:
+                if e["to"] in by_nid:
+                    e["in_answer"] = by_nid[e["to"]]["in_answer"]
+            logger.info("sections: вернул продолжения абзацев через разрыв страницы (%d узлов)", len(changed))
     return {"nodes": nodes, "edges": edges, "root": root_id}
 
 
