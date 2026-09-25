@@ -3,12 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lumina — рабочее пространство</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%236C63FF%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23A78BFA%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%228%22%20fill%3D%22%230A0A1A%22%2F%3E%3Cpath%20d%3D%22M16%205l2.6%208.4L27%2016l-8.4%202.6L16%2027l-2.6-8.4L5%2016l8.4-2.6z%22%20fill%3D%22url(%23g)%22%2F%3E%3C%2Fsvg%3E">
+<title>Lumina · рабочее место</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%228%22%20fill%3D%22%231b2233%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%2218%22%20width%3D%2218%22%20height%3D%226%22%20rx%3D%222%22%20fill%3D%22%23f5dc4a%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%229%22%20width%3D%2213%22%20height%3D%223%22%20rx%3D%221.5%22%20fill%3D%22%23f9fafb%22%2F%3E%3C%2Fsvg%3E">
 <script>
   // Язык версии сайта: ?lang= → сохранённый выбор (общий с лендингом) → язык браузера
   // (ru → русская версия, иначе английская). Ставим ДО отрисовки, чтобы английская
   // версия не мигала русским текстом (body скрыт, пока applyI18n не отработает).
+  // Тема: сохранённый выбор (общий с лендингом) → иначе системная
+  try { var __t = localStorage.getItem('lumina_theme'); if (__t === 'light' || __t === 'dark') document.documentElement.dataset.theme = __t; } catch (e) {}
   window.__LANG = (function () {
     try {
       var q = new URLSearchParams(location.search).get('lang');
@@ -27,35 +29,126 @@
 </script>
 <style>html.i18n-pending body { visibility: hidden; }</style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,600;7..72,700&family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+  /* ── ТОКЕНЫ: «маркер по бумаге». Имена прежние (--bg, --text, --white…), значения новые:
+     светлая тема по умолчанию; тёмная — системная или выбранная кнопкой в топбаре. ── */
   :root {
-    --bg:        #0A0A1A;
-    --surface:   #12122A;
-    --card:      #1A1A3E;
-    --border:    rgba(108,99,255,0.18);
-    --border-lit:rgba(108,99,255,0.45);
-    --accent:    #6C63FF;
-    --glow:      #A78BFA;
-    --text:      #E2E8F0;
-    --muted:     #64748B;
-    --white:     #FFFFFF;
-    --ok:        #34D399;
-    --warn:      #FBBF24;
-    /* цвета типов узлов графа */
-    --t-concept: #6C63FF;
-    --t-method:  #22D3EE;
-    --t-person:  #F472B6;
-    --t-term:    #A78BFA;
+    color-scheme: light;
+    --bg:        oklch(0.975 0.005 262);   /* бумага: фон рабочего места */
+    --surface:   #ffffff;                  /* панели, модалки */
+    --card:      oklch(0.965 0.006 262);   /* поля ввода и вложенные блоки */
+    --border:    oklch(0.90 0.008 262);
+    --border-lit:oklch(0.82 0.014 262);
+    --accent:    oklch(0.46 0.17 264);     /* чернильно-синий: действия */
+    --accent-hover: oklch(0.40 0.17 264);
+    --on-accent: #ffffff;
+    --accent-soft: oklch(0.95 0.03 264);
+    --glow:      oklch(0.46 0.17 264);     /* раньше «неон» иконок и меток → теперь чернила */
+    --text:      oklch(0.23 0.035 262);
+    --text-2:    oklch(0.40 0.03 262);
+    --muted:     oklch(0.52 0.025 262);
+    --white:     oklch(0.20 0.035 262);    /* исторически «цвет заголовков» → самые тёмные чернила */
+    --ok:        oklch(0.50 0.13 150);
+    --warn:      oklch(0.55 0.16 45);
+    --danger:    oklch(0.55 0.19 25);
+    --marker:    oklch(0.92 0.16 103);
+    --hl:        var(--marker);
+    --pill-ink:  #1b2233;                  /* текст на пилюлях-маркерах — всегда тёмный */
+    /* палитра веток карты (текстовыделители); зелёный зарезервирован за ответами саб-чата */
+    --br-1: oklch(0.824 0.077 246);   /* голубой   #9CCBF5 */
+    --br-2: oklch(0.91 0.144 95);     /* жёлтый    #FFE066 */
+    --br-3: oklch(0.817 0.101 354);   /* розовый   #F7A8C8 */
+    --br-4: oklch(0.816 0.086 296);   /* лавандовый #C7B8F5 */
+    --br-5: oklch(0.84 0.12 58);      /* оранжевый #FFB779 */
+    --br-6: oklch(0.85 0.085 212);    /* бирюзовый #89DDEE */
+    --br-answer: oklch(0.858 0.109 143); /* зелёный: ответ саб-чата */
+    --scrim:     oklch(0.2 0.03 262 / .38);
+    --shadow-lg: 0 1px 2px oklch(0.23 0.035 262 / .06), 0 18px 48px oklch(0.23 0.035 262 / .14);
+    --shadow-sm: 0 1px 2px oklch(0.23 0.035 262 / .06), 0 4px 14px oklch(0.23 0.035 262 / .07);
+    --font-ui: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-display: 'Literata', Georgia, 'Times New Roman', serif;
+    /* цвета типов узлов старого графа понятий — тоже из набора маркеров */
+    --t-concept: #9CCBF5;
+    --t-method:  #8FE3D1;
+    --t-person:  #F7A8C8;
+    --t-term:    #C7B8F5;
     --chat-w:    400px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg:        oklch(0.175 0.018 262);
+      --surface:   oklch(0.215 0.02 262);
+      --card:      oklch(0.245 0.022 262);
+      --border:    oklch(0.30 0.02 262);
+      --border-lit:oklch(0.40 0.024 262);
+      --accent:    oklch(0.76 0.12 264);
+      --accent-hover: oklch(0.82 0.10 264);
+      --on-accent: oklch(0.18 0.02 262);
+      --accent-soft: oklch(0.28 0.05 264);
+      --glow:      oklch(0.78 0.11 264);
+      --text:      oklch(0.94 0.008 262);
+      --text-2:    oklch(0.80 0.015 262);
+      --muted:     oklch(0.68 0.02 262);
+      --white:     oklch(0.97 0.006 262);
+      --ok:        oklch(0.78 0.13 150);
+      --warn:      oklch(0.80 0.13 70);
+      --danger:    oklch(0.72 0.16 25);
+      --marker:    oklch(0.86 0.15 102);
+      --hl:        oklch(0.50 0.10 92);     /* на тёмном: приглушённая горчица под светлым текстом */
+      --br-1: oklch(0.76 0.075 246);
+      --br-2: oklch(0.84 0.135 95);
+      --br-3: oklch(0.75 0.095 354);
+      --br-4: oklch(0.75 0.085 296);
+      --br-5: oklch(0.78 0.11 58);
+      --br-6: oklch(0.78 0.08 212);
+      --br-answer: oklch(0.79 0.105 143);
+      --scrim:     rgb(0 0 0 / .55);
+      --shadow-lg: 0 1px 2px rgb(0 0 0 / .4), 0 20px 56px rgb(0 0 0 / .5);
+      --shadow-sm: 0 1px 2px rgb(0 0 0 / .35), 0 6px 18px rgb(0 0 0 / .3);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg:      oklch(0.175 0.018 262);
+    --surface:   oklch(0.215 0.02 262);
+    --card:    oklch(0.245 0.022 262);
+    --border:    oklch(0.30 0.02 262);
+    --border-lit:oklch(0.40 0.024 262);
+    --accent:    oklch(0.76 0.12 264);
+    --accent-hover: oklch(0.82 0.10 264);
+    --on-accent: oklch(0.18 0.02 262);
+    --accent-soft: oklch(0.28 0.05 264);
+    --glow:    oklch(0.78 0.11 264);
+    --text:    oklch(0.94 0.008 262);
+    --text-2:    oklch(0.80 0.015 262);
+    --muted:     oklch(0.68 0.02 262);
+    --white:     oklch(0.97 0.006 262);
+    --ok:      oklch(0.78 0.13 150);
+    --warn:    oklch(0.80 0.13 70);
+    --danger:    oklch(0.72 0.16 25);
+    --marker:    oklch(0.86 0.15 102);
+    --hl:      oklch(0.50 0.10 92);     /* на тёмном: приглушённая горчица под светлым текстом */
+    --br-1: oklch(0.76 0.075 246);
+    --br-2: oklch(0.84 0.135 95);
+    --br-3: oklch(0.75 0.095 354);
+    --br-4: oklch(0.75 0.085 296);
+    --br-5: oklch(0.78 0.11 58);
+    --br-6: oklch(0.78 0.08 212);
+    --br-answer: oklch(0.79 0.105 143);
+    --scrim:     rgb(0 0 0 / .55);
+    --shadow-lg: 0 1px 2px rgb(0 0 0 / .4), 0 20px 56px rgb(0 0 0 / .5);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / .35), 0 6px 18px rgb(0 0 0 / .3);
   }
 
   html { scroll-behavior: smooth; }
   body {
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-ui);
     background: var(--bg);
     color: var(--text);
     height: 100vh;
@@ -77,23 +170,20 @@
     display: flex; align-items: center; gap: 20px;
     padding: 0 24px;
     border-bottom: 1px solid var(--border);
-    background: rgba(18,18,42,0.6);
+    background: color-mix(in oklch, var(--surface) 88%, transparent);
     backdrop-filter: blur(12px);
     z-index: 30;
   }
   .brand {
-    font-family: 'Sora', sans-serif; font-weight: 800; font-size: 20px;
+    font-family: var(--font-display); font-weight: 700; font-size: 21px;
     letter-spacing: -0.02em; color: var(--white);
-    display: flex; align-items: center; gap: 10px;
+    display: inline-flex; align-items: baseline; gap: 0;
   }
-  .brand .dot {
-    width: 10px; height: 10px; border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 14px var(--glow);
-  }
+  .brand .mk { background-image: linear-gradient(var(--hl), var(--hl)); background-repeat: no-repeat;
+    background-position: 0 88%; background-size: 100% 60%; padding: 0 .1em; border-radius: .12em; }
   .topbar .stats {
     margin-left: auto; display: flex; gap: 18px;
-    font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted);
+    font-family: var(--font-ui); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted);
   }
   .topbar .stats b { color: var(--glow); font-weight: 500; }
 
@@ -116,7 +206,7 @@
      компактно. Полный текст раздела открывается по клику в модалке. */
   .tnode {
     flex: none; cursor: pointer; border-radius: 999px; padding: 9px 16px;
-    max-width: 240px; font-family: 'Inter', sans-serif; position: relative; z-index: 1;
+    max-width: 240px; font-family: var(--font-ui); position: relative; z-index: 1;
     transition: transform .15s, box-shadow .15s;
   }
   .tnode:hover { transform: translateY(-2px); }
@@ -132,26 +222,26 @@
     width: 22px; height: 22px; border-radius: 50%; z-index: 3;
     display: flex; align-items: center; justify-content: center;
     font-size: 11px; font-weight: 700; line-height: 1;
-    border: 2px solid rgba(10,10,26,.92); cursor: pointer;
+    border: 2px solid var(--bg); cursor: pointer;
     transition: transform .12s;
   }
   .tnode-toggle:hover { transform: translateY(-50%) scale(1.15); }
 
   /* ── SPATIAL-РЕЖИМ (Документ): страницы PDF + оверлей текст-блоков ────────── */
   .doc-page { position: relative; margin: 0 auto 40px; border-radius: 6px;
-    overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,.5); background:#fff; }
+    overflow: hidden; box-shadow: var(--shadow-lg); background:#fff; }
   .doc-page img { display: block; width: 100%; height: auto; }
   .doc-blk { position: absolute; border-radius: 4px; cursor: pointer;
     border: 1.5px solid transparent; transition: background .12s, border-color .12s; }
-  .doc-blk.text    { border-color: rgba(56,189,248,.45); background: rgba(56,189,248,.06); }
-  .doc-blk.heading { border-color: rgba(167,139,250,.6);  background: rgba(167,139,250,.12); }
-  .doc-blk.text:hover    { background: rgba(56,189,248,.22); }
-  .doc-blk.heading:hover { background: rgba(167,139,250,.3); }
+  .doc-blk.text    { border-color: oklch(0.62 0.10 250 / .30); background: transparent; }
+  .doc-blk.heading { border-color: oklch(0.62 0.10 250 / .5);  background: oklch(0.62 0.10 250 / .07); }
+  .doc-blk.text:hover    { background: oklch(0.90 0.16 103 / .45); border-color: oklch(0.80 0.16 100); }   /* наведение = маркер */
+  .doc-blk.heading:hover { background: oklch(0.90 0.16 103 / .5); border-color: oklch(0.80 0.16 100); }
   /* Фигуры (растровые картинки) — оверлей поверх страницы, клик = увеличить */
   .doc-fig { position: absolute; border-radius: 6px; cursor: zoom-in;
-    border: 2px dashed rgba(52,211,153,.7); background: rgba(52,211,153,.06);
+    border: 2px dashed oklch(0.62 0.13 150 / .75); background: oklch(0.62 0.13 150 / .06);
     transition: background .12s; }
-  .doc-fig:hover { background: rgba(52,211,153,.2); }
+  .doc-fig:hover { background: oklch(0.62 0.13 150 / .16); }
   .doc-fig::after { content: ''; position: absolute; top: 3px; right: 3px; width: 13px; height: 13px;
     background: var(--ok); -webkit-mask: var(--ic-image) center/contain no-repeat; mask: var(--ic-image) center/contain no-repeat;
     filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
@@ -167,26 +257,27 @@
   /* Переключатель Граф/Документ */
   .view-toggle { position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
     z-index: 10; display: flex; gap: 2px; padding: 3px;
-    background: rgba(18,18,42,.8); backdrop-filter: blur(8px);
+    background: color-mix(in oklch, var(--surface) 92%, transparent); backdrop-filter: blur(8px);
     border: 1px solid var(--border); border-radius: 999px; }
   .vt-btn { border: none; background: transparent; color: var(--muted); cursor: pointer;
-    font: 600 12px 'Inter',sans-serif; padding: 6px 16px; border-radius: 999px; transition: .12s; }
-  .vt-btn.active { background: var(--glow, #7C6FF0); color: #fff; }
+    font: 600 12px var(--font-ui); padding: 6px 16px; border-radius: 999px; transition: .12s; }
+  .vt-btn.active { background: var(--accent); color: var(--on-accent); }
 
   /* legend */
   .legend {
     position: absolute; left: 16px; bottom: 16px; z-index: 10;
     display: flex; flex-wrap: wrap; gap: 6px 14px;
     padding: 10px 14px; max-width: 320px;
-    background: rgba(18,18,42,0.75); backdrop-filter: blur(8px);
+    background: color-mix(in oklch, var(--surface) 92%, transparent); backdrop-filter: blur(8px);
     border: 1px solid var(--border); border-radius: 12px;
     font-size: 11px; color: var(--muted);
   }
   .legend .item { display: flex; align-items: center; gap: 6px; }
   .legend .sw { width: 9px; height: 9px; border-radius: 50%; }
+  .legend .sws { display: inline-flex; gap: 2px; }   /* по точке на цвет ветки — те же токены, что у узлов */
   .legend .ring {
     width: 11px; height: 11px; border-radius: 50%;
-    border: 2px solid var(--glow); box-shadow: 0 0 8px var(--glow);
+    border: 2px solid var(--accent);   /* как кольцо узла на пути к ответу */
   }
 
   /* empty state on stage */
@@ -196,15 +287,15 @@
     text-align: center; padding: 40px; gap: 14px;
   }
   .stage-empty h2 {
-    font-family: 'Sora', sans-serif; font-weight: 700; font-size: 26px;
+    font-family: var(--font-display); font-weight: 700; font-size: 26px;
     color: var(--white); letter-spacing: -0.02em;
   }
   .stage-empty p { color: var(--muted); max-width: 380px; line-height: 1.6; font-size: 14px; }
   .stage-empty .glyph {
     width: 72px; height: 72px; border-radius: 20px;
     display: grid; place-items: center;
-    background: linear-gradient(135deg, rgba(108,99,255,0.25), rgba(167,139,250,0.08));
-    border: 1px solid var(--border-lit);
+    background: var(--surface);
+    border: 1px solid var(--border);
     font-size: 34px;
   }
 
@@ -221,10 +312,10 @@
     display: flex; align-items: center; gap: 10px;
   }
   .chat-head h3 {
-    font-family: 'Sora', sans-serif; font-weight: 600; font-size: 15px; color: var(--white);
+    font-family: var(--font-display); font-weight: 600; font-size: 15px; color: var(--white);
   }
   .chat-head .intent {
-    margin-left: auto; font-size: 11px; font-family: 'JetBrains Mono', monospace;
+    margin-left: auto; font-size: 11px; font-family: var(--font-ui); font-variant-numeric: tabular-nums;
     color: var(--glow); padding: 3px 8px; border: 1px solid var(--border);
     border-radius: 999px; opacity: 0; transition: opacity .3s;
   }
@@ -236,7 +327,7 @@
 
   .msg { max-width: 92%; line-height: 1.55; font-size: 14px; }
   .msg.user {
-    align-self: flex-end; background: var(--accent); color: var(--white);
+    align-self: flex-end; background: var(--accent); color: var(--on-accent);
     padding: 10px 14px; border-radius: 14px 14px 4px 14px;
   }
   .msg.bot { align-self: flex-start; color: var(--text); }
@@ -245,7 +336,7 @@
     padding: 14px 16px; border-radius: 4px 14px 14px 14px;
   }
   .msg.bot .answer h4 {
-    font-family: 'Sora', sans-serif; font-size: 14px; color: var(--white);
+    font-family: var(--font-display); font-size: 14px; color: var(--white);
     margin-bottom: 6px; font-weight: 600;
   }
   .msg.bot .answer .summary { color: var(--muted); font-size: 13px; margin: 8px 0; }
@@ -261,10 +352,10 @@
   .chip {
     font-size: 11px; padding: 4px 9px; border-radius: 999px;
     border: 1px solid var(--border-lit); color: var(--glow);
-    background: rgba(108,99,255,0.08); cursor: pointer;
+    background: var(--accent-soft); cursor: pointer;
     transition: background .2s;
   }
-  .chip:hover { background: rgba(108,99,255,0.2); }
+  .chip:hover { background: color-mix(in oklch, var(--accent) 18%, var(--surface)); }
   .chip.matched { border-color: var(--ok); color: var(--ok); }
 
   .thinking { display: flex; gap: 5px; align-items: center; color: var(--muted); font-size: 13px; }
@@ -289,27 +380,27 @@
   }
   .btn:active { transform: translateY(1px); }
   .btn:disabled { opacity: .5; cursor: not-allowed; }
-  .btn.primary { flex: 1; background: var(--accent); color: var(--white); }
-  .btn.primary:hover:not(:disabled) { box-shadow: 0 6px 20px rgba(108,99,255,0.35); }
+  .btn.primary { flex: 1; background: var(--accent); color: var(--on-accent); }
+  .btn.primary:hover:not(:disabled) { background: var(--accent-hover); }
   .btn.ghost { background: var(--card); color: var(--text); border: 1px solid var(--border); }
   .btn.ghost:hover { border-color: var(--border-lit); }
 
   /* ── SOURCE MODAL ── */
   .overlay {
     position: fixed; inset: 0; z-index: 100;
-    background: rgba(5,5,15,0.7); backdrop-filter: blur(6px);
+    background: var(--scrim); backdrop-filter: blur(3px);
     display: none; align-items: center; justify-content: center; padding: 24px;
   }
   .overlay.open { display: flex; }
   .modal {
     width: 100%; max-width: 620px; background: var(--surface);
     border: 1px solid var(--border-lit); border-radius: 20px; padding: 28px;
-    box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+    box-shadow: var(--shadow-lg);
     /* высокий контент (саб-чат с длинной перепиской) не должен вылезать за экран —
        ограничиваем высоту вьюпортом (минус паддинг overlay 24px×2) и скроллим внутри */
     max-height: calc(100vh - 48px); overflow-y: auto;
   }
-  .modal h2 { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 22px; color: var(--white); margin-bottom: 6px; }
+  .modal h2 { font-family: var(--font-display); font-weight: 700; font-size: 22px; color: var(--white); margin-bottom: 6px; }
   .modal .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
   .tabs { display: flex; gap: 6px; margin-bottom: 16px; }
   .tab {
@@ -317,7 +408,7 @@
     font-size: 13px; font-weight: 600; color: var(--muted);
     background: var(--card); border: 1px solid var(--border); transition: .2s;
   }
-  .tab.active { color: var(--white); border-color: var(--border-lit); background: rgba(108,99,255,0.12); }
+  .tab.active { color: var(--white); border-color: var(--border-lit); background: var(--surface); box-shadow: var(--shadow-sm); }
   .modal textarea {
     width: 100%; min-height: 200px; resize: vertical;
     background: var(--card); border: 1px solid var(--border); border-radius: 12px;
@@ -329,21 +420,21 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
     color: var(--muted); text-align: center; padding: 24px; cursor: pointer; transition: .2s;
   }
-  .drop:hover, .drop.dragover { background: rgba(108,99,255,0.06); border-color: var(--accent); color: var(--text); }
+  .drop:hover, .drop.dragover { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
   .drop .big { color: var(--glow); }
-  .drop .fname { color: var(--glow); font-size: 13px; font-family: 'JetBrains Mono', monospace; }
+  .drop .fname { color: var(--glow); font-size: 13px; font-family: var(--font-ui); font-variant-numeric: tabular-nums; }
   /* Состояние загрузки: спиннер вместо ↥, подсветка рамки и крупный яркий текст */
   .drop .spinner { display: none; width: 38px; height: 38px; border-radius: 50%;
-    border: 3px solid rgba(124,111,240,.25); border-top-color: var(--accent);
+    border: 3px solid color-mix(in oklch, var(--accent) 22%, transparent); border-top-color: var(--accent);
     animation: dropspin .8s linear infinite; }
   @keyframes dropspin { to { transform: rotate(360deg); } }
-  @keyframes droppulse { 0%,100% { border-color: var(--accent); } 50% { border-color: rgba(124,111,240,.45); } }
-  .drop.loading { cursor: default; background: rgba(108,99,255,0.08);
+  @keyframes droppulse { 0%,100% { border-color: var(--accent); } 50% { border-color: color-mix(in oklch, var(--accent) 40%, transparent); } }
+  .drop.loading { cursor: default; background: var(--accent-soft);
     border-color: var(--accent); animation: droppulse 1.4s ease-in-out infinite; }
   .drop.loading .big { display: none; }
   .drop.loading .spinner { display: block; }
   .drop.loading .drop-hint { display: none; }
-  .drop.loading .fname { font-size: 15px; font-weight: 600; color: #c4b5fd; font-family: 'Inter', sans-serif; }
+  .drop.loading .fname { font-size: 15px; font-weight: 600; color: var(--accent); font-family: var(--font-ui); }
   .hidden { display: none !important; }
   .modal .actions { display: flex; gap: 10px; margin-top: 20px; }
   .modal .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
@@ -362,7 +453,7 @@
     position: fixed; inset: 0; z-index: 400;
     display: none; align-items: center; justify-content: center; padding: 24px;
     background:
-      radial-gradient(1200px 600px at 50% -10%, rgba(108,99,255,0.16), transparent 60%),
+
       var(--bg);
   }
   .gate.show { display: flex; }
@@ -370,26 +461,26 @@
     width: 100%; max-width: 420px; text-align: center;
     background: var(--surface); border: 1px solid var(--border-lit);
     border-radius: 22px; padding: 40px 32px;
-    box-shadow: 0 30px 90px rgba(0,0,0,0.55);
+    box-shadow: var(--shadow-lg);
   }
   .gate-mark {
     width: 60px; height: 60px; margin: 0 auto 18px; border-radius: 18px;
     display: grid; place-items: center; font-size: 30px;
-    background: linear-gradient(135deg, rgba(108,99,255,0.3), rgba(167,139,250,0.1));
+    background: var(--marker); color: var(--pill-ink) !important;
     border: 1px solid var(--border-lit); color: var(--glow);
   }
   .gate-card h1 {
-    font-family: 'Sora', sans-serif; font-weight: 800; font-size: 26px;
+    font-family: var(--font-display); font-weight: 700; font-size: 27px;
     letter-spacing: -0.02em; color: var(--white); margin-bottom: 8px;
   }
   .gate-card p { color: var(--muted); font-size: 14px; line-height: 1.6; margin-bottom: 26px; }
   .google-btn {
     width: 100%; display: flex; align-items: center; justify-content: center; gap: 12px;
-    background: var(--white); color: #1a1a1a; border: none; border-radius: 12px;
+    background: var(--surface); color: var(--text); border: 1px solid var(--border-lit); border-radius: 12px;
     padding: 14px 20px; font-family: inherit; font-weight: 600; font-size: 15px;
     cursor: pointer; transition: transform .1s, box-shadow .2s;
   }
-  .google-btn:hover:not(:disabled) { box-shadow: 0 8px 26px rgba(108,99,255,0.3); }
+  .google-btn:hover:not(:disabled) { border-color: var(--muted); }
   .google-btn:active { transform: translateY(1px); }
   .google-btn:disabled { opacity: .6; cursor: not-allowed; }
   .google-icon { width: 20px; height: 20px; }
@@ -406,7 +497,7 @@
   .user-chip.show { display: inline-flex; }
   .user-chip img, .user-chip .ava {
     width: 24px; height: 24px; border-radius: 50%; object-fit: cover;
-    background: var(--accent); color: var(--white);
+    background: var(--accent); color: var(--on-accent);
     display: grid; place-items: center; font-size: 11px; font-weight: 600;
   }
   .user-chip .logout {
@@ -423,7 +514,7 @@
   }
 
   /* ── ПАНЕЛЬ СОХРАНЁННЫХ ЧАТОВ ── */
-  .drawer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 40; }
+  .drawer-backdrop { position: fixed; inset: 0; background: var(--scrim); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 40; }
   .drawer-backdrop.open { opacity: 1; pointer-events: auto; }
   .drawer { position: fixed; top: 0; left: 0; height: 100%; width: 300px; max-width: 85vw;
             background: var(--card); border-right: 1px solid var(--border);
@@ -436,7 +527,7 @@
   .chats-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
   .chat-item { padding: 10px 12px; border-radius: 8px; cursor: pointer; border: 1px solid transparent;
                display: flex; align-items: center; gap: 8px; }
-  .chat-item:hover { background: rgba(108,99,255,.12); border-color: var(--border); }
+  .chat-item:hover { background: var(--accent-soft); border-color: var(--border); }
   .chat-item .body { flex: 1; min-width: 0; }
   .chat-item .t { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chat-item .d { font-size: 11px; color: var(--muted); margin-top: 3px; }
@@ -444,7 +535,7 @@
                      background: none; border: none; color: var(--muted); font-size: 15px; cursor: pointer;
                      border-radius: 6px; opacity: 0; transition: opacity .15s, background .15s, color .15s; }
   .chat-item:hover .del { opacity: 1; }
-  .chat-item .del:hover { background: rgba(239,68,68,.15); color: #EF4444; }
+  .chat-item .del:hover { background: color-mix(in oklch, var(--danger) 14%, transparent); color: var(--danger); }
   .chats-empty { color: var(--muted); font-size: 13px; padding: 16px; text-align: center; }
 
   /* ── FEEDBACK ── */
@@ -457,17 +548,17 @@
   .fb-btn:hover { border-color: var(--border-lit); color: var(--text); }
   .fb-overlay {
     position: fixed; inset: 0; z-index: 300;
-    background: rgba(5,5,15,0.7); backdrop-filter: blur(6px);
+    background: var(--scrim); backdrop-filter: blur(3px);
     display: none; align-items: center; justify-content: center; padding: 24px;
   }
   .fb-overlay.open { display: flex; }
   .fb-modal {
     width: 100%; max-width: 480px; background: var(--surface);
     border: 1px solid var(--border-lit); border-radius: 20px; padding: 28px;
-    box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+    box-shadow: var(--shadow-lg);
   }
   .fb-modal h2 {
-    font-family: 'Sora', sans-serif; font-weight: 700; font-size: 20px;
+    font-family: var(--font-display); font-weight: 700; font-size: 20px;
     color: var(--white); margin-bottom: 6px;
   }
   .fb-modal .sub { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
@@ -499,12 +590,12 @@
 
   /* ── ЕДИНЫЕ ДЕЙСТВИЯ В МОДАЛКЕ УЗЛА (иконка + подпись, тихий стиль) ── */
   .mbtn {
-    padding: 7px 13px; font-family: 'Inter', sans-serif; font-weight: 600; font-size: 12.5px;
-    color: var(--text); background: rgba(255,255,255,0.02);
+    padding: 7px 13px; font-family: var(--font-ui); font-weight: 600; font-size: 12.5px;
+    color: var(--text); background: var(--surface);
     border: 1px solid var(--border); border-radius: 9px; cursor: pointer;
     transition: border-color .18s, background .18s, color .18s;
   }
-  .mbtn:hover:not(:disabled) { border-color: var(--border-lit); background: rgba(108,99,255,0.08); color: var(--white); }
+  .mbtn:hover:not(:disabled) { border-color: var(--border-lit); background: var(--accent-soft); color: var(--white); }
   .mbtn .ic { color: var(--glow); }                       /* акцент только на иконке */
   .mbtn:disabled { opacity: .55; cursor: default; }
 
@@ -514,45 +605,52 @@
     width: 32px; height: 32px; border-radius: 9px; border: 1px solid transparent;
     background: transparent; color: var(--muted); cursor: pointer; transition: background .18s, color .18s;
   }
-  .icon-btn:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+  .icon-btn:hover { background: color-mix(in oklch, var(--text) 7%, transparent); color: var(--text); }
   .modal-close { position: absolute; top: 14px; right: 14px; }
 
   /* фрагмент/справка: полная рамка + тонкая заливка (без цветного side-stripe) */
   .src-box { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
-    background: rgba(108,99,255,0.05); color: var(--text); font-size: 13.5px; line-height: 1.55; }
+    background: var(--card); color: var(--text); font-size: 13.5px; line-height: 1.55; }
 
   /* ── Карточки слайдов (презентации) ── */
   .slide-card + .slide-card { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
   .slide-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 8px; }
-  .slide-num { flex: none; font-family: 'Inter', sans-serif; font-weight: 600; font-size: 10.5px;
+  .slide-num { flex: none; font-family: var(--font-ui); font-weight: 600; font-size: 10.5px;
     letter-spacing: .06em; text-transform: uppercase; color: var(--glow);
     padding: 2px 8px; border: 1px solid var(--border-lit); border-radius: 999px; }
-  .slide-title { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14.5px; line-height: 1.35; color: var(--white); }
+  .slide-title { font-family: var(--font-ui); font-weight: 700; font-size: 14.5px; line-height: 1.35; color: var(--white); }
   .slide-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
   .slide-items li { position: relative; padding-left: 15px; font-size: 13.5px; line-height: 1.5; color: var(--text); }
   .slide-items li::before { content: ''; position: absolute; left: 1px; top: .62em; width: 5px; height: 5px;
     border-radius: 50%; background: var(--glow); }
   .slide-items li.nested::before { background: transparent; border: 1px solid var(--glow); width: 4px; height: 4px; }
   .slide-items li.h { font-weight: 600; color: var(--white); }
-  .slide-items li.nested { color: #CBD5E1; }
+  .slide-items li.nested { color: var(--text-2); }
   .slide-imgs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .slide-imgs img { height: 124px; max-width: 100%; object-fit: contain; background: #fff; cursor: zoom-in;
     border-radius: 8px; border: 1px solid var(--border); transition: border-color .18s; }
   .slide-imgs img:hover { border-color: var(--border-lit); }
 
-  .src-box.cyan { border-color: rgba(34,211,238,0.22); background: rgba(34,211,238,0.05); }
-  .src-label { display: inline-flex; align-items: center; gap: 6px; font-family: 'Inter', sans-serif;
+  .src-box.cyan { border-color: var(--border); background: var(--card); }
+  .src-label { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-ui);
     font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px; }
   .src-label .ic { color: currentColor; }
 
 
   /* ── ПЕРЕКЛЮЧАТЕЛЬ ЯЗЫКА (RU/EN) ── */
   .lang-btn {
-    font-family: 'Inter', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: .04em;
+    font-family: var(--font-ui); font-weight: 600; font-size: 12px; letter-spacing: .04em;
     color: var(--muted); background: transparent; border: 1px solid var(--border);
     border-radius: 999px; padding: 6px 10px; cursor: pointer; transition: color .18s, border-color .18s;
   }
   .lang-btn:hover { color: var(--text); border-color: var(--border-lit); }
+  .theme-btn { display: inline-flex; align-items: center; justify-content: center; padding: 6px 8px; }
+  .theme-sun { display: none; }
+  :root[data-theme="dark"] .theme-sun { display: block; }  :root[data-theme="dark"] .theme-moon { display: none; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .theme-sun { display: block; }
+    :root:not([data-theme="light"]) .theme-moon { display: none; }
+  }
 
   /* ── МОБИЛЬНАЯ АДАПТАЦИЯ ─────────────────────────────────────────────────── */
   .mobile-nav { display: none; }
@@ -572,12 +670,12 @@
 
     .mobile-nav {
       grid-area: nav; display: flex; border-top: 1px solid var(--border);
-      background: rgba(18,18,42,0.92); backdrop-filter: blur(12px); z-index: 25;
+      background: color-mix(in oklch, var(--surface) 94%, transparent); backdrop-filter: blur(12px); z-index: 25;
     }
     .mobile-nav button {
       flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
       gap: 3px; min-height: 44px; background: none; border: none; cursor: pointer;
-      color: var(--muted); font-family: 'Inter', sans-serif; font-weight: 600; font-size: 11px;
+      color: var(--muted); font-family: var(--font-ui); font-weight: 600; font-size: 11px;
     }
     .mobile-nav button.active { color: var(--glow); }
 
@@ -592,7 +690,8 @@
     .topbar .btn.ghost { padding: 8px 12px !important; font-size: 13px !important; }
     .brand { font-size: 17px; }
     .user-chip #userName { display: none; }
-    .lang-btn { margin-left: auto; padding: 6px 9px; }   /* язык + (аватар · выйти) — к правому краю */
+    .lang-btn { padding: 6px 9px; }
+    .theme-btn { margin-left: auto; }   /* тема · язык · (аватар · выйти) — к правому краю */
 
     /* модалки: почти на весь экран, меньше паддинги */
     .overlay { padding: 10px; }
@@ -611,11 +710,11 @@
 </head>
 <body>
   <!-- AUTH GATE: показывается, пока пользователь не вошёл через Supabase -->
-  <div class="gate show" id="authGate">
+  <div class="gate" id="authGate">
     <div class="gate-card">
       <div class="gate-mark"><span class="ic" data-ic="spark" data-sz="28"></span></div>
       <h1 data-i18n="gate.title">Вход в Lumina</h1>
-      <p data-i18n="gate.text">Войдите, чтобы построить граф знаний и задавать вопросы своим источникам.</p>
+      <p data-i18n="gate.text">Войдите через Google, чтобы сохранять разборы и возвращаться к ним.</p>
       <button class="google-btn" id="googleSignIn">
         <svg class="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -633,11 +732,12 @@
   <div class="app">
     <!-- TOPBAR -->
     <header class="topbar">
-      <div class="brand"><span class="dot"></span> Lumina</div>
+      <div class="brand"><span class="mk">lu</span>mina</div>
       <button class="btn ghost" id="myChatsBtn" style="padding:8px 14px;font-size:13px;"><span class="ic" data-ic="list" data-sz="16"></span><span data-i18n="top.chats">Мои чаты</span></button>
       <button class="fb-btn" id="feedbackBtn"><span class="ic" data-ic="message" data-sz="15"></span><span data-i18n="top.feedback">Фидбэк</span></button>
       <div class="stats" id="stats"></div>
-      <button class="btn ghost" id="newSourceBtn" style="padding:8px 14px;font-size:13px;"><span class="ic" data-ic="plus" data-sz="15"></span><span data-i18n="top.newSource">Новый источник</span></button>
+      <button class="btn ghost" id="newSourceBtn" style="padding:8px 14px;font-size:13px;"><span class="ic" data-ic="plus" data-sz="15"></span><span data-i18n="top.newSource">Новый документ</span></button>
+      <button class="lang-btn theme-btn" id="themeBtn" type="button"><svg class="theme-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="theme-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
       <button class="lang-btn" id="langBtn" type="button"></button>
       <div class="user-chip" id="userChip">
         <span class="ava" id="userAva"></span>
@@ -662,18 +762,18 @@
       <div id="graph"></div>
       <div class="stage-empty" id="stageEmpty">
         <div class="glyph" style="color:var(--glow)"><span class="ic" data-ic="network" data-sz="36"></span></div>
-        <h2 data-i18n="empty.title">Граф знаний появится здесь</h2>
-        <p data-i18n="empty.text">Загрузите текст или файл — Lumina разберёт его на понятия и связи, а затем ответит на ваши вопросы, показывая, через какие узлы графа пришёл ответ.</p>
-        <button class="btn primary" id="emptyCTA" style="flex:none;width:100%;max-width:220px;margin-top:6px;" data-i18n="empty.cta">Загрузить источник</button>
+        <h2 data-i18n="empty.title">Здесь появится карта документа</h2>
+        <p data-i18n="empty.text">Загрузите PDF, презентацию или текст. Lumina разложит документ на разделы, а вы сможете спрашивать о чём угодно и видеть, откуда взят ответ.</p>
+        <button class="btn primary" id="emptyCTA" style="flex:none;width:100%;max-width:220px;margin-top:6px;" data-i18n="empty.cta">Загрузить документ</button>
       </div>
       <div class="legend hidden" id="legend">
-        <div class="item"><span class="sw" style="background:linear-gradient(90deg,#38BDF8,#FBBF24,#F472B6)"></span><span data-i18n="legend.color">цвет = ветка</span></div>
-        <div class="item"><span class="sw" style="background:#34D399"></span><span data-i18n="legend.answer">ответ (саб-чат)</span></div>
+        <div class="item"><span class="sws"><span class="sw" style="background:var(--br-1)"></span><span class="sw" style="background:var(--br-2)"></span><span class="sw" style="background:var(--br-3)"></span><span class="sw" style="background:var(--br-4)"></span></span><span data-i18n="legend.color">цвет = раздел</span></div>
+        <div class="item"><span class="sw" style="background:var(--br-answer)"></span><span data-i18n="legend.answer">ответ (саб-чат)</span></div>
         <div class="item"><span class="ring"></span><span data-i18n="legend.path">путь к ответу</span></div>
       </div>
       <!-- Переключатель Граф / Документ (spatial). Показывается, когда есть манифест PDF. -->
       <div class="view-toggle hidden" id="viewToggle">
-        <button class="vt-btn active" id="vtGraph" data-view="graph" data-i18n="view.graph">Граф</button>
+        <button class="vt-btn active" id="vtGraph" data-view="graph" data-i18n="view.graph">Карта</button>
         <button class="vt-btn" id="vtDoc" data-view="spatial" data-i18n="view.doc">Документ</button>
       </div>
     </main>
@@ -681,17 +781,17 @@
     <!-- CHAT -->
     <aside class="chat">
       <div class="chat-head">
-        <h3 data-i18n="chat.title">Диалог с источником</h3>
+        <h3 data-i18n="chat.title">Вопросы к документу</h3>
         <span class="intent" id="intentBadge"></span>
       </div>
       <div class="messages" id="messages">
         <div class="msg bot"><div class="answer">
-          <h4 data-i18n="chat.readyTitle">Готов к работе</h4>
-          <div class="summary" data-i18n="chat.readyText">Загрузите источник, чтобы начать. Затем задавайте вопросы — я отвечу на основе построенного графа знаний.</div>
+          <h4 data-i18n="chat.readyTitle">Сначала загрузите документ</h4>
+          <div class="summary" data-i18n="chat.readyText">Потом спрашивайте обычными словами. К каждому ответу будет видно, на какие разделы он опирается.</div>
         </div></div>
       </div>
       <div class="composer">
-        <textarea id="q" data-i18n-ph="chat.placeholder" placeholder="Спросите что-нибудь о загруженном тексте…" disabled></textarea>
+        <textarea id="q" data-i18n-ph="chat.placeholder" placeholder="Спросите что-нибудь о документе…" disabled></textarea>
         <div class="row">
           <button class="btn primary" id="askBtn" disabled data-i18n="chat.ask">Спросить</button>
         </div>
@@ -709,8 +809,8 @@
   <div class="overlay" id="overlay">
     <div class="modal" style="position:relative;">
       <button id="modalClose" class="icon-btn modal-close" aria-label="Закрыть" data-i18n-aria="common.close" title="Закрыть" data-i18n-title="common.close"><span class="ic" data-ic="close" data-sz="18"></span></button>
-      <h2 data-i18n="src.title">Загрузить источник</h2>
-      <div class="sub" data-i18n="src.sub">Вставьте текст или загрузите файл. Lumina построит граф понятий и связей.</div>
+      <h2 data-i18n="src.title">Загрузить документ</h2>
+      <div class="sub" data-i18n="src.sub">Вставьте текст или выберите файл. Lumina разложит его на разделы.</div>
       <div class="tabs">
         <div class="tab active" data-tab="paste" data-i18n="src.tabPaste">Вставить текст</div>
         <div class="tab" data-tab="file" data-i18n="src.tabFile">Загрузить файл</div>
@@ -727,10 +827,10 @@
           <input type="file" id="fileInput" accept=".txt,.md,.pdf,.pptx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation" class="hidden">
         </div>
       </div>
-      <div class="hint" data-i18n="src.tip">Совет: чем содержательнее текст, тем богаче граф. Оптимально — 300–3000 слов.</div>
+      <div class="hint" data-i18n="src.tip">Лучше всего подходят документы от пары страниц: статьи, главы, отчёты, договоры.</div>
       <div class="hint" id="limitsInfo">Лимиты: текст до 100 000 символов · файлы .txt, .md, .pdf, .pptx до 15 МБ</div>
       <div class="actions">
-        <button class="btn primary" id="analyzeBtn" data-i18n="src.build">Построить граф</button>
+        <button class="btn primary" id="analyzeBtn" data-i18n="src.build">Разобрать документ</button>
       </div>
     </div>
   </div>
@@ -749,24 +849,24 @@
         <button id="nodeInfographicView" class="mbtn" title="Открыть уже созданную инфографику" data-i18n-title="node.infographicViewTitle" style="display:none;">
           <span class="ic" data-ic="image" data-sz="15"></span><span class="mbtn-lbl" data-i18n="node.infographicView">Открыть инфографику</span></button>
       </div>
-      <div id="nodeDesc" style="margin:10px 0 0;color:#CBD5E1;font-size:14px;line-height:1.5;"></div>
+      <div id="nodeDesc" style="margin:10px 0 0;color:var(--text-2);font-size:14px;line-height:1.5;"></div>
       <div id="nodeSnippetWrap" style="margin-top:18px;">
-        <div class="src-label" style="color:#a78bfa;"><span class="ic" data-ic="doc" data-sz="13"></span><span id="nodeSnippetLabel" data-i18n="node.snippet">Фрагмент источника</span></div>
+        <div class="src-label" style="color:var(--accent);"><span class="ic" data-ic="doc" data-sz="13"></span><span id="nodeSnippetLabel" data-i18n="node.snippet">Фрагмент источника</span></div>
         <div id="nodeSnippet" class="src-box" style="white-space:pre-wrap;"></div>
         <div id="nodeSnippetHint" style="display:none;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-top:7px;"><span class="ic" data-ic="zoom" data-sz="13"></span><span data-i18n="node.snippetHint">Нажмите на фрагмент, чтобы увеличить · можно прокрутить</span></div>
       </div>
       <div id="nodeWorldWrap" style="margin-top:16px;">
-        <div class="src-label" style="color:#22D3EE;"><span class="ic" data-ic="spark" data-sz="13"></span><span data-i18n="node.world">Кратко о понятии</span></div>
+        <div class="src-label" style="color:var(--ok);"><span class="ic" data-ic="spark" data-sz="13"></span><span data-i18n="node.world">Кратко о понятии</span></div>
         <div id="nodeWorld" class="src-box cyan"></div>
       </div>
 
       <!-- САБ-ЧАТ: вопрос строго по этой ветке; ответ станет новым узлом-ответвлением -->
       <div id="nodeChatWrap" style="margin-top:18px;border-top:1px solid var(--border);padding-top:16px;">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#34D399;margin-bottom:8px;" data-i18n="node.askTitle">Спросить по этой ветке</div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ok);margin-bottom:8px;" data-i18n="node.askTitle">Спросить по этой ветке</div>
         <div id="nodeChatMsgs" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
         <div style="display:flex;gap:8px;">
           <input id="nodeChatInput" type="text" data-i18n-ph="node.askPlaceholder" placeholder="Вопрос по этому разделу…"
-            style="flex:1;background:rgba(20,20,51,0.6);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:13.5px;outline:none;">
+            style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:13.5px;outline:none;">
           <button id="nodeChatSend" class="btn primary" style="flex:none;padding:10px 18px;" data-i18n="chat.ask">Спросить</button>
         </div>
         <div style="font-size:11px;color:var(--muted);margin-top:8px;" data-i18n="node.askNote">Ответ добавится в граф отдельной веткой от этого узла.</div>
@@ -779,14 +879,13 @@
     <div class="modal" style="position:relative; max-width:460px; text-align:center;">
       <button id="paywallClose" class="icon-btn modal-close" aria-label="Закрыть" data-i18n-aria="common.close" title="Закрыть" data-i18n-title="common.close"><span class="ic" data-ic="close" data-sz="18"></span></button>
       <div style="color:var(--glow);margin-bottom:10px;"><span class="ic" data-ic="spark" data-sz="34"></span></div>
-      <h2 style="margin:0 0 8px;" data-i18n="pay.title">Бесплатные графы закончились</h2>
-      <div class="sub" id="paywallText" style="margin-bottom:18px;" data-i18n="pay.text">Вы использовали все 5 графов бесплатного тарифа.</div>
-      <div style="background:rgba(20,20,51,0.6);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:18px;text-align:left;font-size:13.5px;color:#CBD5E1;line-height:1.6;" data-i18n="pay.offer">
-        Хотите продолжить без ограничений? Напишите нам — откроем доступ к Pro ($5/мес):
-        безлимитные графы, всё из Free, приоритет в очереди.
+      <h2 style="margin:0 0 8px;" data-i18n="pay.title">Бесплатные документы закончились</h2>
+      <div class="sub" id="paywallText" style="margin-bottom:18px;" data-i18n="pay.text">Вы разобрали все 5 бесплатных документов.</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:18px;text-align:left;font-size:13.5px;color:var(--text-2);line-height:1.6;" data-i18n="pay.offer">
+        Хотите продолжить без ограничений? Напишите нам, и мы откроем доступ к Pro за $5 в месяц.
       </div>
       <a class="btn primary" style="display:block;text-align:center;padding:12px 20px;box-sizing:border-box;text-decoration:none;"
-         href="mailto:markingmark33@gmail.com?subject=Lumina%20Pro%20—%20хочу%20доступ" data-i18n="pay.cta">Запросить доступ к Pro</a>
+         href="mailto:markingmark33@gmail.com?subject=Lumina%20Pro%3A%20%D1%85%D0%BE%D1%87%D1%83%20%D0%B4%D0%BE%D1%81%D1%82%D1%83%D0%BF" data-i18n="pay.cta">Запросить доступ к Pro</a>
       <div style="font-size:11.5px;color:var(--muted);margin-top:12px;" data-i18n="pay.note">Созданные графы остаются доступны в «Мои чаты». Удаление чата не возвращает слот.</div>
     </div>
   </div>
@@ -850,9 +949,9 @@
   const TYPE_COLORS = {
     concept: getVar('--t-concept'), method: getVar('--t-method'),
     person:  getVar('--t-person'),  term:   getVar('--t-term'),
-    branch:  '#7C6FF0',   // узлы-категории mind-map (заголовки разделов с детьми)
-    section: '#38BDF8',   // листья mind-map — карточки с цитатой из документа
-    answer:  '#34D399',   // узлы-ответы из саб-чата (ответвление от ветки)
+    branch:  'var(--br-4)',       // узлы-категории mind-map (заголовки разделов с детьми)
+    section: 'var(--br-1)',       // листья mind-map — карточки с цитатой из документа
+    answer:  'var(--br-answer)',  // узлы-ответы из саб-чата — единственный зелёный на карте
   };
   function getVar(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
   // светлый ли цвет фона (для выбора цвета текста поверх него)
@@ -892,52 +991,52 @@
   // Бэкенд получает язык заголовком X-Lang и отвечает на нём (см. authHeader).
   const I18N = {
     ru: {
-      'doc.title': 'Lumina — рабочее пространство',
+      'doc.title': 'Lumina · рабочее место',
       'lang.switch': 'Switch to English',
       'gate.title': 'Вход в Lumina',
-      'gate.text': 'Войдите, чтобы построить граф знаний и задавать вопросы своим источникам.',
+      'gate.text': 'Войдите через Google, чтобы сохранять разборы и возвращаться к ним.',
       'gate.google': 'Войти через Google',
       'gate.note': 'Продолжая, вы соглашаетесь с Условиями использования и Политикой конфиденциальности.',
       'gate.noSupabase': 'Supabase недоступен. Проверьте подключение к интернету.',
-      'gate.notConfigured': 'Supabase не настроен — вход невозможен.',
+      'gate.notConfigured': 'Supabase не настроен, вход невозможен.',
       'gate.loginFailed': 'Не удалось войти: ',
       'top.chats': 'Мои чаты',
       'top.feedback': 'Фидбэк',
-      'top.newSource': 'Новый источник',
+      'top.newSource': 'Новый документ',
       'top.logout': 'выйти',
       'top.logoutTitle': 'Выйти',
       'common.close': 'Закрыть',
       'drawer.newChat': 'Новый чат',
-      'empty.title': 'Граф знаний появится здесь',
-      'empty.text': 'Загрузите текст или файл — Lumina разберёт его на понятия и связи, а затем ответит на ваши вопросы, показывая, через какие узлы графа пришёл ответ.',
-      'empty.cta': 'Загрузить источник',
-      'legend.color': 'цвет = ветка',
+      'empty.title': 'Здесь появится карта документа',
+      'empty.text': 'Загрузите PDF, презентацию или текст. Lumina разложит документ на разделы, а вы сможете спрашивать о чём угодно и видеть, откуда взят ответ.',
+      'empty.cta': 'Загрузить документ',
+      'legend.color': 'цвет = раздел',
       'legend.answer': 'ответ (саб-чат)',
       'legend.path': 'путь к ответу',
-      'view.graph': 'Граф',
+      'view.graph': 'Карта',
       'view.doc': 'Документ',
-      'chat.title': 'Диалог с источником',
-      'chat.readyTitle': 'Готов к работе',
-      'chat.readyText': 'Загрузите источник, чтобы начать. Затем задавайте вопросы — я отвечу на основе построенного графа знаний.',
-      'chat.placeholder': 'Спросите что-нибудь о загруженном тексте…',
+      'chat.title': 'Вопросы к документу',
+      'chat.readyTitle': 'Сначала загрузите документ',
+      'chat.readyText': 'Потом спрашивайте обычными словами. К каждому ответу будет видно, на какие разделы он опирается.',
+      'chat.placeholder': 'Спросите что-нибудь о документе…',
       'chat.ask': 'Спросить',
-      'chat.thinking': 'Строю граф и рассуждаю…',
+      'chat.thinking': 'Читаю документ…',
       'chat.intent': 'намерение: ',
       'chat.answerReady': 'Ответ готов',
       'chat.keyPoints': 'Ключевое',
       'chat.failedTitle': 'Не получилось',
       'nav.map': 'Карта',
       'nav.chat': 'Чат',
-      'src.title': 'Загрузить источник',
-      'src.sub': 'Вставьте текст или загрузите файл. Lumina построит граф понятий и связей.',
+      'src.title': 'Загрузить документ',
+      'src.sub': 'Вставьте текст или выберите файл. Lumina разложит его на разделы.',
       'src.tabPaste': 'Вставить текст',
       'src.tabFile': 'Загрузить файл',
       'src.placeholder': 'Вставьте сюда научный или учебный текст…',
       'src.dropHint': 'Перетащите файл сюда или нажмите, чтобы выбрать',
       'src.supported': 'поддерживается .txt, .md, .pdf, .pptx',
-      'src.tip': 'Совет: чем содержательнее текст, тем богаче граф. Оптимально — 300–3000 слов.',
+      'src.tip': 'Лучше всего подходят документы от пары страниц: статьи, главы, отчёты, договоры.',
       'src.limits': 'Лимиты: текст до {chars} символов · файлы {files} до {mb} МБ',
-      'src.build': 'Построить граф',
+      'src.build': 'Разобрать документ',
       'file.unsupported': 'Поддерживаются .txt, .md, .pdf и .pptx.',
       'file.loaded': ' · загружен',
       'file.parsing': 'Разбираю «{name}»…',
@@ -947,9 +1046,9 @@
       'file.ocr': ' · распознано OCR',
       'file.done': '✓ {name} · {pages} {unit}, {chars} символов{ocr}',
       'file.noServer': 'Нет связи с сервером для разбора файла: ',
-      'session.expired': 'Сессия истекла — войдите снова.',
+      'session.expired': 'Сессия истекла. Войдите снова.',
       'type.concept': 'Концепция', 'type.method': 'Метод', 'type.person': 'Персона', 'type.term': 'Термин',
-      'type.branch': 'Тематическая ветка', 'type.section': 'Раздел документа', 'type.answer': 'Ответ (саб-чат)',
+      'type.branch': 'Раздел с подразделами', 'type.section': 'Раздел документа', 'type.answer': 'Ответ (саб-чат)',
       'node.question': 'Вопрос: ',
       'node.toDoc': 'Открыть в документе',
       'node.toDocTitle': 'Показать эту ветку в документе',
@@ -971,7 +1070,7 @@
       'info.failed': 'Не удалось создать инфографику.',
       'info.noServer': 'Нет связи с сервером Lumina.',
       'info.loading': 'Генерирую инфографику…',
-      'info.loadingSub': 'ИИ рисует картинку по разделу — это занимает несколько секунд',
+      'info.loadingSub': 'Рисую картинку по разделу, это займёт несколько секунд',
       'info.modelTitle': 'Модель Gemini, которая нарисовала инфографику',
       'info.download': 'Скачать PNG',
       'analyze.emptyText': 'Сначала вставьте текст или загрузите файл.',
@@ -984,7 +1083,7 @@
       'graph.mentions': ' · упоминаний: ',
       'doc.figChart': 'Чарт/чертёж',
       'doc.figImage': 'Картинка',
-      'doc.figZoom': ' — нажмите, чтобы увеличить',
+      'doc.figZoom': ': нажмите, чтобы увеличить',
       'doc.pageAlt': 'стр. {n}',
       'slide.label': 'Слайд {n}',
       'slide.zoom': 'Нажмите, чтобы увеличить',
@@ -997,12 +1096,12 @@
       'chats.loadFailed': 'Не удалось загрузить',
       'chats.confirmDelete': 'Удалить этот чат безвозвратно?',
       'chats.deleteFailed': 'Не удалось удалить чат.',
-      'pay.title': 'Бесплатные графы закончились',
-      'pay.text': 'Вы использовали все 5 графов бесплатного тарифа.',
-      'pay.textN': 'Вы использовали {used} из {limit} графов бесплатного тарифа.',
-      'pay.offer': 'Хотите продолжить без ограничений? Напишите нам — откроем доступ к Pro ($5/мес): безлимитные графы, всё из Free, приоритет в очереди.',
+      'pay.title': 'Бесплатные документы закончились',
+      'pay.text': 'Вы разобрали все 5 бесплатных документов.',
+      'pay.textN': 'Вы разобрали {used} из {limit} бесплатных документов.',
+      'pay.offer': 'Хотите продолжить без ограничений? Напишите нам, и мы откроем доступ к Pro за $5 в месяц.',
       'pay.cta': 'Запросить доступ к Pro',
-      'pay.subject': 'Lumina Pro — хочу доступ',
+      'pay.subject': 'Lumina Pro: хочу доступ',
       'pay.note': 'Созданные графы остаются доступны в «Мои чаты». Удаление чата не возвращает слот.',
       'fb.title': 'Оставить отзыв',
       'fb.sub': 'Расскажите, что понравилось или что можно улучшить.',
@@ -1013,54 +1112,59 @@
       'fb.empty': 'Напишите отзыв или поставьте оценку.',
       'fb.failed': 'Не удалось отправить отзыв. Попробуйте позже.',
       'err.noConnection': 'Нет связи с сервером.',
+      'theme.toggle': 'Сменить тему',
+      'demo.user': 'Демо',
+      'demo.introTitle': 'Это демо на примере договора аренды',
+      'demo.introText': 'Нажмите на любой раздел карты или переключитесь на «Документ». Чтобы разобрать свой файл, войдите через Google.',
+      'demo.blocked': 'В демо свои вопросы не отправляются. Войдите, чтобы спрашивать о своих документах.',
     },
     en: {
-      'doc.title': 'Lumina — workspace',
+      'doc.title': 'Lumina · workspace',
       'lang.switch': 'Переключить на русский',
       'gate.title': 'Sign in to Lumina',
-      'gate.text': 'Sign in to build a knowledge map and ask questions about your sources.',
+      'gate.text': 'Sign in with Google to save your documents and come back to them.',
       'gate.google': 'Continue with Google',
       'gate.note': 'By continuing, you agree to the Terms of Use and the Privacy Policy.',
       'gate.noSupabase': 'Supabase is unavailable. Check your internet connection.',
-      'gate.notConfigured': 'Supabase is not configured — sign-in is unavailable.',
+      'gate.notConfigured': 'Supabase is not configured, so sign-in is unavailable.',
       'gate.loginFailed': 'Sign-in failed: ',
       'top.chats': 'My chats',
       'top.feedback': 'Feedback',
-      'top.newSource': 'New source',
+      'top.newSource': 'New document',
       'top.logout': 'sign out',
       'top.logoutTitle': 'Sign out',
       'common.close': 'Close',
       'drawer.newChat': 'New chat',
-      'empty.title': 'Your knowledge map will appear here',
-      'empty.text': 'Upload text or a file — Lumina will break it down into concepts and connections, then answer your questions and show which nodes of the map each answer came from.',
-      'empty.cta': 'Upload a source',
-      'legend.color': 'color = branch',
+      'empty.title': 'Your document’s map will appear here',
+      'empty.text': 'Upload a PDF, a slide deck or some text. Lumina lays the document out into sections, and you can ask about anything and see where each answer comes from.',
+      'empty.cta': 'Upload a document',
+      'legend.color': 'color = section',
       'legend.answer': 'answer (sub-chat)',
       'legend.path': 'path to answer',
       'view.graph': 'Map',
       'view.doc': 'Document',
-      'chat.title': 'Chat with your source',
-      'chat.readyTitle': 'Ready when you are',
-      'chat.readyText': 'Upload a source to get started. Then ask questions — I’ll answer based on the knowledge map.',
-      'chat.placeholder': 'Ask anything about the uploaded text…',
+      'chat.title': 'Questions about the document',
+      'chat.readyTitle': 'Start by uploading a document',
+      'chat.readyText': 'Then ask in plain words. Every answer shows which sections it relies on.',
+      'chat.placeholder': 'Ask anything about the document…',
       'chat.ask': 'Ask',
-      'chat.thinking': 'Building the map and thinking…',
+      'chat.thinking': 'Reading the document…',
       'chat.intent': 'intent: ',
       'chat.answerReady': 'Answer ready',
       'chat.keyPoints': 'Key points',
       'chat.failedTitle': 'Something went wrong',
       'nav.map': 'Map',
       'nav.chat': 'Chat',
-      'src.title': 'Upload a source',
-      'src.sub': 'Paste text or upload a file. Lumina will build a map of concepts and connections.',
+      'src.title': 'Upload a document',
+      'src.sub': 'Paste text or choose a file. Lumina will lay it out into sections.',
       'src.tabPaste': 'Paste text',
       'src.tabFile': 'Upload file',
       'src.placeholder': 'Paste a scientific or study text here…',
       'src.dropHint': 'Drop a file here or click to choose one',
       'src.supported': 'supports .txt, .md, .pdf, .pptx',
-      'src.tip': 'Tip: the richer the text, the richer the map. 300–3,000 words works best.',
+      'src.tip': 'Works best on documents of a few pages or more: papers, chapters, reports, contracts.',
       'src.limits': 'Limits: text up to {chars} characters · {files} files up to {mb} MB',
-      'src.build': 'Build the map',
+      'src.build': 'Analyze document',
       'file.unsupported': 'Supported formats: .txt, .md, .pdf and .pptx.',
       'file.loaded': ' · loaded',
       'file.parsing': 'Processing “{name}”…',
@@ -1070,9 +1174,9 @@
       'file.ocr': ' · recognized with OCR',
       'file.done': '✓ {name} · {pages} {unit}, {chars} characters{ocr}',
       'file.noServer': 'Can’t reach the server to process the file: ',
-      'session.expired': 'Your session has expired — please sign in again.',
+      'session.expired': 'Your session has expired. Please sign in again.',
       'type.concept': 'Concept', 'type.method': 'Method', 'type.person': 'Person', 'type.term': 'Term',
-      'type.branch': 'Topic branch', 'type.section': 'Document section', 'type.answer': 'Answer (sub-chat)',
+      'type.branch': 'Section with subsections', 'type.section': 'Document section', 'type.answer': 'Answer (sub-chat)',
       'node.question': 'Question: ',
       'node.toDoc': 'Open in document',
       'node.toDocTitle': 'Show this branch in the document',
@@ -1094,7 +1198,7 @@
       'info.failed': 'Could not create the infographic.',
       'info.noServer': 'Can’t reach the Lumina server.',
       'info.loading': 'Generating the infographic…',
-      'info.loadingSub': 'AI is drawing an image for this section — it takes a few seconds',
+      'info.loadingSub': 'Drawing an image for this section. It takes a few seconds',
       'info.modelTitle': 'The Gemini model that drew this infographic',
       'info.download': 'Download PNG',
       'analyze.emptyText': 'Paste some text or upload a file first.',
@@ -1107,7 +1211,7 @@
       'graph.mentions': ' · mentions: ',
       'doc.figChart': 'Chart/diagram',
       'doc.figImage': 'Image',
-      'doc.figZoom': ' — click to enlarge',
+      'doc.figZoom': ': click to enlarge',
       'doc.pageAlt': 'page {n}',
       'slide.label': 'Slide {n}',
       'slide.zoom': 'Click to enlarge',
@@ -1120,12 +1224,12 @@
       'chats.loadFailed': 'Could not load',
       'chats.confirmDelete': 'Delete this chat permanently?',
       'chats.deleteFailed': 'Could not delete the chat.',
-      'pay.title': 'You’ve used all your free maps',
-      'pay.text': 'You’ve used all 5 maps on the free plan.',
-      'pay.textN': 'You’ve used {used} of {limit} maps on the free plan.',
-      'pay.offer': 'Want to keep going without limits? Write to us and we’ll open Pro access ($5/mo): unlimited maps, everything in Free, and priority processing.',
+      'pay.title': 'You’ve used all your free documents',
+      'pay.text': 'You’ve analyzed all 5 free documents.',
+      'pay.textN': 'You’ve analyzed {used} of {limit} free documents.',
+      'pay.offer': 'Want to keep going without limits? Write to us and we’ll open Pro access for $5 a month.',
       'pay.cta': 'Request Pro access',
-      'pay.subject': 'Lumina Pro — access request',
+      'pay.subject': 'Lumina Pro: access request',
       'pay.note': 'Maps you’ve created stay in “My chats”. Deleting a chat doesn’t free up a slot.',
       'fb.title': 'Leave feedback',
       'fb.sub': 'Tell us what you liked or what we could do better.',
@@ -1136,6 +1240,11 @@
       'fb.empty': 'Write something or leave a rating.',
       'fb.failed': 'Could not send feedback. Please try again later.',
       'err.noConnection': 'No connection to the server.',
+      'theme.toggle': 'Switch theme',
+      'demo.user': 'Demo',
+      'demo.introTitle': 'This is a demo using a rental agreement',
+      'demo.introText': 'Click any section of the map or switch to “Document”. To analyze your own file, sign in with Google.',
+      'demo.blocked': 'Questions aren’t sent in the demo. Sign in to ask about your own documents.',
     },
   };
   let LANG = (window.__LANG === 'en') ? 'en' : 'ru';
@@ -1172,6 +1281,8 @@
     document.documentElement.lang = LANG;
     const lb = document.getElementById('langBtn');
     if (lb) { lb.textContent = LANG === 'ru' ? 'EN' : 'RU'; lb.title = T('lang.switch'); lb.setAttribute('aria-label', T('lang.switch')); }
+    const tb = document.getElementById('themeBtn');
+    if (tb) { tb.title = T('theme.toggle'); tb.setAttribute('aria-label', T('theme.toggle')); }
     const fn = document.getElementById('fname');
     if (fn && fn.dataset.default === '1') fn.textContent = T('src.supported');   // статус загрузки не трогаем
     const ml = document.querySelector('#paywallOverlay a[href^="mailto:"]');
@@ -1185,12 +1296,21 @@
     LANG = next === 'en' ? 'en' : 'ru';
     try { localStorage.setItem('lumina_lang', LANG); } catch (_) {}
     applyI18n();
+    if (DEMO) { startDemo(); return; }   // демо-документ перестраивается на новом языке
     if (typeof nodeModalId !== 'undefined' && nodeModalId && lastGraph) {   // открытая модалка узла
       const n = lastGraph.nodes.find(x => x.id === nodeModalId);
       if (n) openNodeModal(n);
     }
   }
   document.getElementById('langBtn').onclick = () => setLang(LANG === 'ru' ? 'en' : 'ru');
+  // тема: явная светлая/тёмная поверх системной; ключ общий с лендингом
+  document.getElementById('themeBtn').onclick = () => {
+    const cur = document.documentElement.dataset.theme
+      || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('lumina_theme', next); } catch (_) {}
+  };
   applyI18n();
 
   // ── ЭЛЕМЕНТЫ ──
@@ -1468,14 +1588,15 @@
       .filter(n => n && n.type === 'answer');
     for (const a of answers) {
       if (a.question) box.insertAdjacentHTML('beforeend',
-        `<div style="align-self:flex-end;background:var(--accent);color:#fff;border-radius:10px 10px 2px 10px;padding:7px 11px;font-size:13px;max-width:85%;">${esc(a.question)}</div>`);
+        `<div style="align-self:flex-end;background:var(--accent);color:var(--on-accent);border-radius:10px 10px 2px 10px;padding:7px 11px;font-size:13px;max-width:85%;">${esc(a.question)}</div>`);
       box.insertAdjacentHTML('beforeend',
-        `<div style="align-self:flex-start;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.3);color:#E2E8F0;border-radius:10px 10px 10px 2px;padding:8px 12px;font-size:13px;max-width:90%;"><b style="color:#34D399;">${esc(a.name)}</b><br>${esc(a.full || a.excerpt || '')}</div>`);
+        `<div style="align-self:flex-start;background:color-mix(in oklch, var(--ok) 10%, var(--surface));border:1px solid color-mix(in oklch, var(--ok) 35%, var(--border));color:var(--text);border-radius:10px 10px 10px 2px;padding:8px 12px;font-size:13px;max-width:90%;"><b style="color:var(--ok);">${esc(a.name)}</b><br>${esc(a.full || a.excerpt || '')}</div>`);
     }
   }
 
   // отправить вопрос по текущей ветке → новый узел-ответвление
   async function sendNodeQuestion(){
+    if (DEMO) { toast(T('demo.blocked')); return; }
     const q = $('nodeChatInput').value.trim();
     if (!q || !nodeModalId || !lastGraph) return;
     const parent = lastGraph.nodes.find(x => x.id === nodeModalId);
@@ -1484,7 +1605,7 @@
     btn.disabled = true; input.disabled = true; btn.textContent = '…';
     // показать вопрос сразу
     $('nodeChatMsgs').insertAdjacentHTML('beforeend',
-      `<div style="align-self:flex-end;background:var(--accent);color:#fff;border-radius:10px 10px 2px 10px;padding:7px 11px;font-size:13px;max-width:85%;">${esc(q)}</div>`);
+      `<div style="align-self:flex-end;background:var(--accent);color:var(--on-accent);border-radius:10px 10px 2px 10px;padding:7px 11px;font-size:13px;max-width:85%;">${esc(q)}</div>`);
     try {
       const res = await fetch(API_BASE + '/api/ask-node', {
         method: 'POST',
@@ -1529,6 +1650,7 @@
 
   // ── ИНФОГРАФИКА: картинка по разделу (image-модель Gemini) ──
   async function makeInfographic(){
+    if (DEMO) { toast(T('demo.blocked')); return; }
     if (!nodeModalId || !lastGraph) return;
     const node = lastGraph.nodes.find(x => x.id === nodeModalId);
     if (!node) return;
@@ -1627,51 +1749,51 @@
   // лайтбокс: анимированный загрузчик, пока генерируется картинка (не «зависло»)
   function showInfographicLoading(){
     const box = $('figBox');
-    box.style.background = '#0e0e2a';
+    box.style.background = 'var(--surface)';
     box.innerHTML =
       '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;'
-      + 'gap:16px;min-width:min(80vw,420px);min-height:280px;padding:32px;color:#a5f3fc;font:600 14px Inter,sans-serif;">'
-      + '<div style="width:46px;height:46px;border-radius:50%;border:4px solid rgba(34,211,238,.2);'
-      + 'border-top-color:#22D3EE;animation:dropspin .8s linear infinite;"></div>'
+      + 'gap:16px;min-width:min(80vw,420px);min-height:280px;padding:32px;color:var(--text);font:600 14px var(--font-ui);">'
+      + '<div style="width:46px;height:46px;border-radius:50%;border:4px solid color-mix(in oklch, var(--accent) 20%, transparent);'
+      + 'border-top-color:var(--accent);animation:dropspin .8s linear infinite;"></div>'
       + '<div>' + esc(T('info.loading')) + '</div>'
-      + '<div style="font-weight:400;font-size:12px;color:#64748b;">' + esc(T('info.loadingSub')) + '</div>'
+      + '<div style="font-weight:400;font-size:12px;color:var(--muted);">' + esc(T('info.loadingSub')) + '</div>'
       + '</div>';
     $('figOverlay').classList.add('open');
   }
   function showInfographicError(msg){
     const box = $('figBox');
-    box.style.background = '#0e0e2a';
+    box.style.background = 'var(--surface)';
     box.innerHTML =
       '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;min-width:min(80vw,360px);'
-      + 'padding:32px;text-align:center;color:#fca5a5;font:600 14px Inter,sans-serif;">'
-      + '<div style="color:#f87171;">' + svgIcon('alert', 30) + '</div><div>' + esc(msg) + '</div></div>';
+      + 'padding:32px;text-align:center;color:var(--danger);font:600 14px var(--font-ui);">'
+      + '<div style="color:var(--danger);">' + svgIcon('alert', 30) + '</div><div>' + esc(msg) + '</div></div>';
     $('figOverlay').classList.add('open');
   }
 
   // показать сгенерированную инфографику в лайтбоксе + кнопка скачивания
   function openInfographic(data){
     const box = $('figBox');
-    box.innerHTML = ''; box.style.background = '#0e0e2a';
+    box.innerHTML = ''; box.style.background = 'var(--surface)';
     const img = document.createElement('img');
     img.src = data.image;
     img.alt = data.title || T('node.infographic');
     img.style.cssText = 'display:block;max-width:100%;height:auto;';
     box.appendChild(img);
     const bar = document.createElement('div');
-    bar.style.cssText = 'display:flex;gap:8px;align-items:center;padding:8px;background:#0e0e2a;';
+    bar.style.cssText = 'display:flex;gap:8px;align-items:center;padding:8px;background:var(--surface);';
     if (data.model) {
       const tag = document.createElement('span');
       tag.textContent = data.model;
       tag.title = T('info.modelTitle');
-      tag.style.cssText = 'font:11px JetBrains Mono,monospace;color:#64748b;';
+      tag.style.cssText = 'font:11px var(--font-ui);color:var(--muted);';
       bar.appendChild(tag);
     }
     const fname = (data.title || 'infographic').replace(/[^\wа-яё\- ]/gi, '').slice(0, 60) + '.png';
     const dl = document.createElement('button');
     dl.innerHTML = svgIcon('download', 15) + '<span>' + esc(T('info.download')) + '</span>';
     dl.style.cssText = 'flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;'
-      + 'padding:9px 14px;font:600 13px Inter,sans-serif;border:none;'
-      + 'background:var(--accent);color:#fff;border-radius:8px;cursor:pointer;';
+      + 'padding:9px 14px;font:600 13px var(--font-ui);border:none;'
+      + 'background:var(--accent);color:var(--on-accent);border-radius:8px;cursor:pointer;';
     // скачиваем через blob — работает и для data URL, и для signed URL из Storage
     // (у cross-origin ссылки атрибут download игнорируется, поэтому не полагаемся на него)
     dl.onclick = async () => {
@@ -1775,6 +1897,7 @@
 
   // ── ГЛАВНЫЙ ВЫЗОВ БЭКЕНДА ──
   async function runAnalyze(query, isFirst){
+    if (DEMO) { addUserMsg(query); addErrorMsg(T('demo.blocked')); return; }
     addUserMsg(query);
     const thinkingEl = addThinking();
     setAsk(false);
@@ -1936,7 +2059,9 @@
     // ── ЦВЕТ ПО ВЕТКЕ: каждая главная ветка (ребёнок корня) получает свой цвет
     // из палитры, все её потомки наследуют его. Так разделы визуально сгруппированы
     // (раньше все листья были типа 'section' → один цвет на всё дерево).
-    const FAM_PALETTE = ['#38BDF8','#FBBF24','#F472B6','#A78BFA','#22D3EE','#FB923C','#4ADE80','#60A5FA'];
+    // палитра веток = набор текстовыделителей (всегда светлые → текст на них тёмный)
+    // зелёного среди веток нет: он только у ответов саб-чата (см. легенду)
+    const FAM_PALETTE = ['var(--br-1)','var(--br-2)','var(--br-3)','var(--br-4)','var(--br-5)','var(--br-6)'];
     const famColor = new Map();
     let famIdx = 0;
     const paintFamily = (id, color) => {
@@ -1978,18 +2103,19 @@
       // цвет: ответы саб-чата — всегда зелёные (это добавленное юзером), остальные —
       // по своей главной ветке (famColor), с откатом на тип узла для старого графа понятий
       const typeColor  = isAnswer ? TYPE_COLORS.answer
-                       : (famColor.get(id) || TYPE_COLORS[n.type] || '#6C63FF');
+                       : (famColor.get(id) || TYPE_COLORS[n.type] || 'var(--br-1)');
       const filled     = n.in_answer || isBranch || isRoot;
       const kids       = children.get(id) || [];
       const hasKids    = kids.length > 0;
 
-      const bg      = filled ? typeColor : 'rgba(20,20,51,0.95)';
-      const border  = n.in_answer ? '#A78BFA' : typeColor;
+      const bg      = isRoot ? 'var(--text)'
+                    : filled ? typeColor : `color-mix(in oklab, ${typeColor} 30%, var(--surface))`;
+      const border  = isRoot ? 'var(--text)' : typeColor;
       // текст на залитой карточке: по яркости фона (в палитре веток есть светлые —
       // жёлтый/циан/зелёный, белым по ним не читается)
-      const fg      = filled ? (isLightColor(typeColor) ? '#0A0A1A' : '#FFFFFF') : '#CBD5E1';
+      const fg      = isRoot ? 'var(--bg)' : (filled ? 'var(--pill-ink)' : 'var(--text)');
       const fontPx  = isCard ? 12.5 : (isRoot ? 16 : (isBranch ? 14 : 13));
-      const glow    = n.in_answer ? 'box-shadow:0 0 18px rgba(167,139,250,.55);' : '';
+      const glow    = n.in_answer ? 'box-shadow:0 0 0 2.5px var(--bg), 0 0 0 4.5px var(--accent);' : '';
       const isCollapsed = hasKids && collapsed.has(id);
 
       // Пилюля: только заголовок. excerpt раздела показываем по клику в модалке.
@@ -1998,16 +2124,16 @@
         : `<span class="t-title" style="font-weight:${isRoot||isBranch?700:500};">${esc(n.name)}</span>`;
 
       // Тоггл на пилюлях с детьми: свёрнуто → число скрытых, развёрнуто → «−».
-      const togFg = isLightColor(typeColor) ? '#0A0A1A' : '#FFFFFF';
+      const togFg = 'var(--pill-ink)';
       const toggle = hasKids
-        ? `<span class="tnode-toggle" style="background:${typeColor};color:${togFg};"
+        ? `<span class="tnode-toggle" style="background:${isRoot ? 'var(--text)' : typeColor};color:${isRoot ? 'var(--bg)' : togFg};"
              title="${isCollapsed ? T('graph.expand') : T('graph.collapse')}">${isCollapsed ? kids.length : '−'}</span>`
         : '';
 
       let html = `<div class="tnode-wrap">
         <div class="tnode${hasKids ? ' has-children' : ''}${n.in_answer ? ' in-answer' : ''}"
              data-id="${esc(id)}" data-col="${typeColor}"
-             style="background:${bg};border:${n.in_answer ? '2.5px' : '1.5px'} solid ${border};color:${fg};font-size:${fontPx}px;${glow}"
+             style="background:${bg};border:1.5px solid ${border};color:${fg};font-size:${fontPx}px;${glow}"
              title="${esc(n.type)}${n.mentions > 1 ? T('graph.mentions') + n.mentions : ''}">${body}${toggle}</div>`;
       if (hasKids && !isCollapsed) {
         html += `<div class="tchildren">${kids.map(renderNode).join('')}</div>`;
@@ -2064,11 +2190,12 @@
         const y2 = (kr.top + kr.height / 2 - cRect.top) / z;
         // цвет линии = цвет ветки ребёнка; путь ответа подсвечиваем фиолетовым
         const inAns = child.classList.contains('in-answer');
-        const col = inAns ? '#A78BFA' : (child.dataset.col || 'rgba(148,163,184,.5)');
+        const col = inAns ? 'var(--accent)'
+          : (child.dataset.col ? `color-mix(in oklab, ${child.dataset.col} 62%, var(--text))` : 'var(--border-lit)');
         const w   = inAns ? 2.6 : 2;
         const dx  = (x2 - x1) * 0.5;   // горизонтальные «плечи» → S-образная кривая
         const d = `M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${(x1+dx).toFixed(1)} ${y1.toFixed(1)}, ${(x2-dx).toFixed(1)} ${y2.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}`;
-        paths.push(`<path d="${d}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linecap="round" opacity="${inAns ? 0.95 : 0.8}"/>`);
+        paths.push(`<path d="${d}" fill="none" style="stroke:${col}" stroke-width="${w}" stroke-linecap="round" opacity="${inAns ? 0.95 : 0.8}"/>`);
       });
     });
     svg.innerHTML = paths.join('');
@@ -2137,7 +2264,7 @@
       const a = ctr(fe), b = ctr(be);
       const dy = (b.y - a.y) * 0.4;
       const d = `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} C ${a.x.toFixed(1)} ${(a.y+dy).toFixed(1)}, ${b.x.toFixed(1)} ${(b.y-dy).toFixed(1)}, ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
-      paths.push(`<path d="${d}" fill="none" stroke="#34D399" stroke-width="1.5" stroke-dasharray="5 4" opacity="0.75"/>`);
+      paths.push(`<path d="${d}" fill="none" style="stroke:var(--ok)" stroke-width="1.5" stroke-dasharray="5 4" opacity="0.75"/>`);
     }
     svg.innerHTML = paths.join('');
   }
@@ -2415,7 +2542,7 @@
     if (f.caption) {
       const cap = document.createElement('div');
       cap.textContent = f.caption;
-      cap.style.cssText = 'font:13px/1.4 Inter,sans-serif;color:#334155;padding:8px 12px;background:#fff;';
+      cap.style.cssText = 'font:13px/1.4 var(--font-ui);color:#334155;padding:8px 12px;background:#fff;';
       box.appendChild(cap);
     }
     // навигация фигура→текст: блоки, которые ссылаются на эту фигуру (Рис. N)
@@ -2424,7 +2551,7 @@
       const btn = document.createElement('button');
       btn.innerHTML = svgIcon('arrowUp', 15) + '<span>' + esc(T('fig.mentioned')) + '</span>';
       btn.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:7px;width:100%;'
-        + 'padding:9px 14px;font:600 13px Inter,sans-serif;background:var(--accent);color:#fff;border:none;cursor:pointer;';
+        + 'padding:9px 14px;font:600 13px var(--font-ui);background:var(--accent);color:var(--on-accent);border:none;cursor:pointer;';
       btn.onclick = (e) => {
         e.stopPropagation();
         $('figOverlay').classList.remove('open');
@@ -2661,7 +2788,7 @@
     }
     el.style.transition = 'box-shadow .15s';
     const prevShadow = el.style.boxShadow;
-    el.style.boxShadow = '0 0 0 3px #A78BFA, 0 0 24px rgba(167,139,250,.7)';
+    el.style.boxShadow = '0 0 0 3px var(--accent)';
     setTimeout(() => { el.style.boxShadow = prevShadow; }, 1200);
     return true;
   }
@@ -2913,8 +3040,173 @@
     } catch (e) { console.error('openChat', e); }
   };
 
+  // ── ДЕМО-РЕЖИМ (?demo=1): рабочее место без входа и без бэкенда ────────────────
+  // Пример — договор аренды (тот же, что на лендинге). Страницы рисуются в canvas,
+  // строки получают честные координаты, поэтому работают карта, вырезки и «Документ».
+  const DEMO = new URLSearchParams(location.search).has('demo');
+
+  const DEMO_DOC = {
+    ru: {
+      title: 'Договор аренды квартиры',
+      pages: [
+        [ ['h', 'Договор аренды квартиры', 'root'],
+          ['h', '1. Стороны и предмет договора', 'b1'],
+          ['p', '1.1. Арендодатель Иванова Мария Петровна передаёт, а Арендатор Смирнов Алексей Игоревич принимает во временное пользование квартиру для проживания.', 's11'],
+          ['p', '1.2. Квартира расположена по адресу: г. Москва, ул. Лесная, д. 12, кв. 48. Общая площадь 54 кв. м, две жилые комнаты, мебель и техника по описи.', 's12'],
+          ['h', '2. Оплата', 'b2'],
+          ['p', '2.1. Арендная плата составляет 65 000 рублей в месяц и вносится не позднее 5-го числа текущего месяца переводом на карту Арендодателя.', 's21'],
+          ['p', '2.2. При подписании договора Арендатор вносит обеспечительный платёж в размере 65 000 рублей. Из него может быть удержана стоимость ремонта повреждений.', 's22'],
+        ],
+        [ ['h', '3. Расторжение договора', 'b3'],
+          ['p', '3.1. Арендатор вправе расторгнуть договор досрочно, письменно уведомив Арендодателя не позднее чем за 30 календарных дней.', 's31'],
+          ['p', '3.2. Обеспечительный платёж возвращается в течение 10 рабочих дней после подписания акта приёма-передачи квартиры.', 's32'],
+          ['h', '4. Прочие условия', 'b4'],
+          ['p', '4.1. Все изменения к договору оформляются в письменном виде и подписываются обеими сторонами.', 's41'],
+        ],
+      ],
+      tree: [
+        { key: 'b1', title: 'Стороны и предмет', kids: [['s11', 'Кто сдаёт и кто снимает'], ['s12', 'Описание квартиры']] },
+        { key: 'b2', title: 'Оплата', kids: [['s21', 'Срок и способ оплаты'], ['s22', 'Залог']] },
+        { key: 'b3', title: 'Расторжение', kids: [['s31', 'Досрочное расторжение'], ['s32', 'Возврат залога']] },
+        { key: 'b4', title: 'Прочие условия', kids: [['s41', 'Изменения договора']] },
+      ],
+      world: {
+        s31: 'Досрочное расторжение: прекращение договора раньше срока по инициативе одной из сторон, обычно с предварительным уведомлением.',
+        s22: 'Обеспечительный платёж (залог): сумма, которую арендодатель держит на случай ущерба или долга по оплате.',
+      },
+      q: 'Можно съехать раньше срока?',
+      a: { answer: 'Да. Нужно письменно предупредить арендодателя минимум за 30 дней.',
+           summary: 'Это пункт 3.1. Залог вернут в течение 10 рабочих дней после подписания акта (пункт 3.2).',
+           key_points: ['Уведомление только письменное', 'Не позднее чем за 30 календарных дней', 'Залог возвращается после акта приёма-передачи'] },
+      path: ['s31', 's32'],
+    },
+    en: {
+      title: 'Apartment rental agreement',
+      pages: [
+        [ ['h', 'Apartment rental agreement', 'root'],
+          ['h', '1. Parties and property', 'b1'],
+          ['p', '1.1. The Landlord, Maria Ivanova, lets and the Tenant, Alex Smirnov, takes the apartment for residential use for the term of this agreement.', 's11'],
+          ['p', '1.2. The apartment is located at 12 Lesnaya St., apt. 48, Moscow. Total area 54 sq. m, two bedrooms, furniture and appliances as per the inventory.', 's12'],
+          ['h', '2. Payment', 'b2'],
+          ['p', '2.1. The rent is 65,000 rubles per month, paid no later than the 5th day of the current month by transfer to the Landlord’s card.', 's21'],
+          ['p', '2.2. On signing, the Tenant pays a security deposit of 65,000 rubles. The cost of repairing any damage may be deducted from it.', 's22'],
+        ],
+        [ ['h', '3. Termination', 'b3'],
+          ['p', '3.1. The Tenant may terminate this agreement early by giving the Landlord written notice at least 30 calendar days in advance.', 's31'],
+          ['p', '3.2. The security deposit is returned within 10 business days after the handover certificate for the apartment is signed.', 's32'],
+          ['h', '4. Other terms', 'b4'],
+          ['p', '4.1. Any changes to this agreement must be made in writing and signed by both parties.', 's41'],
+        ],
+      ],
+      tree: [
+        { key: 'b1', title: 'Parties & property', kids: [['s11', 'Who rents to whom'], ['s12', 'About the apartment']] },
+        { key: 'b2', title: 'Payment', kids: [['s21', 'When and how to pay'], ['s22', 'Security deposit']] },
+        { key: 'b3', title: 'Termination', kids: [['s31', 'Ending the lease early'], ['s32', 'Getting the deposit back']] },
+        { key: 'b4', title: 'Other terms', kids: [['s41', 'Changing the agreement']] },
+      ],
+      world: {
+        s31: 'Early termination: ending a contract before its term at one party’s initiative, usually after advance notice.',
+        s22: 'Security deposit: money the landlord holds to cover damage or unpaid rent.',
+      },
+      q: 'Can I move out before the lease ends?',
+      a: { answer: 'Yes. You need to give the landlord written notice at least 30 days in advance.',
+           summary: 'That’s clause 3.1. Your deposit comes back within 10 business days after the handover certificate is signed (clause 3.2).',
+           key_points: ['Notice must be in writing', 'At least 30 calendar days in advance', 'The deposit is returned after the handover certificate'] },
+      path: ['s31', 's32'],
+    },
+  };
+
+  // страницы договора → PNG + строки с координатами (как у настоящего spatial-манифеста)
+  async function renderDemoPages(doc){
+    try { await Promise.all([document.fonts.load('700 14px Literata'), document.fonts.load('400 12px Literata'), document.fonts.load('400 10px Onest')]); } catch (_) {}
+    const W = 612, H = 792, S = 2, M = 76, maxW = W - 2 * M;
+    const pages = [], blocks = [], keyBlocks = {};
+    doc.pages.forEach((items, pi) => {
+      const c = document.createElement('canvas');
+      c.width = W * S; c.height = H * S;
+      const g = c.getContext('2d');
+      g.scale(S, S);
+      g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+      g.font = '400 9.5px Onest, sans-serif'; g.fillStyle = '#8a93a3';
+      g.fillText(doc.title, M, 46);
+      g.fillText(String(pi + 1), W - M - 4, H - 40);
+      let y = 70;
+      for (const [kind, text, key] of items) {
+        const isTitle = key === 'root', isH = kind === 'h';
+        const size = isTitle ? 19 : (isH ? 13 : 11.5);
+        const lh = size * (isH ? 1.4 : 1.6);
+        g.font = `${isH ? 700 : 400} ${size}px Literata, Georgia, serif`;
+        g.fillStyle = '#1b2233';
+        if (isH && !isTitle) y += 12;
+        const lines = []; let line = '';
+        for (const w of text.split(' ')) {
+          const t = line ? line + ' ' + w : w;
+          if (g.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t;
+        }
+        if (line) lines.push(line);
+        for (const ln of lines) {
+          y += lh;
+          g.fillText(ln, M, y);
+          const id = 'b' + blocks.length;
+          blocks.push({ id, page: pi, kind: isH ? 'heading' : 'text', text: ln,
+                        bbox: [M, +(y - size * 0.92).toFixed(1), +(M + g.measureText(ln).width).toFixed(1), +(y + size * 0.3).toFixed(1)] });
+          (keyBlocks[key] = keyBlocks[key] || []).push(id);
+        }
+        y += isTitle ? 10 : (isH ? 2 : 7);
+      }
+      pages.push({ index: pi, width_pt: W, height_pt: H, image_w: W * S, image_h: H * S, image: c.toDataURL('image/png') });
+    });
+    return { manifest: { schema_version: 2, image_kind: 'dataurl', pages, blocks, figures: [], links: [] }, keyBlocks };
+  }
+
+  function buildDemoGraph(doc, man, keyBlocks){
+    const textOf = {};
+    man.blocks.forEach(b => { textOf[b.id] = b.text; });
+    const full = ids => ids.map(i => textOf[i]).join(' ');
+    const hit = new Set(doc.path);
+    const nodes = [{ id: 'root', name: doc.title, type: 'branch', block_ids: keyBlocks.root || [], full: '', excerpt: '', world: '', mentions: 1, in_answer: false }];
+    const edges = [];
+    for (const br of doc.tree) {
+      const bIds = keyBlocks[br.key] || [];
+      nodes.push({ id: br.key, name: br.title, type: 'branch', block_ids: bIds, full: full(bIds), excerpt: '', world: '', mentions: 1, in_answer: false });
+      edges.push({ from: 'root', to: br.key, label: '', in_answer: br.kids.some(([k]) => hit.has(k)) });
+      for (const [k, title] of br.kids) {
+        const ids = keyBlocks[k] || [];
+        const f = full(ids);
+        nodes.push({ id: k, name: title, type: 'section', block_ids: ids, full: f, excerpt: f.slice(0, 400),
+                     world: (doc.world || {})[k] || '', mentions: 1, in_answer: hit.has(k) });
+        edges.push({ from: br.key, to: k, label: '', in_answer: hit.has(k) });
+      }
+    }
+    return { nodes, edges, root: 'root' };
+  }
+
+  async function startDemo(){
+    const doc = DEMO_DOC[LANG] || DEMO_DOC.ru;
+    $('userName').textContent = T('demo.user');
+    $('userAva').textContent = LANG === 'en' ? 'D' : 'Д';
+    $('userChip').classList.add('show');
+    $('logoutBtn').style.display = 'none';
+    const { manifest, keyBlocks } = await renderDemoPages(doc);
+    lastManifest = manifest;
+    await hydrateSpatial(lastManifest);
+    $('viewToggle').classList.remove('hidden');
+    currentText = manifest.blocks.map(b => b.text).join('\n');
+    lastGraph = buildDemoGraph(doc, manifest, keyBlocks);
+    $('stageEmpty').classList.add('hidden');
+    currentView = 'graph';
+    renderGraph(lastGraph);
+    renderStats({ nodes: lastGraph.nodes.length, edges: lastGraph.edges.length, words: currentText.split(/\s+/).length });
+    msgs.innerHTML = '';
+    addBotMsg({ answer: { answer: T('demo.introTitle'), summary: T('demo.introText') } }, true);
+    addUserMsg(doc.q, true);
+    addBotMsg({ answer: doc.a, explanation: { path_nodes: [] } }, true);
+    $('q').disabled = false; $('askBtn').disabled = false;
+  }
+
   // Сессия на входе + реакция на логин/логаут
   async function initAuth(){
+    if (DEMO) { hideGate(); startDemo(); return; }
     if (!sb) { showGate(T('gate.notConfigured')); return; }
     const { data: { session } } = await sb.auth.getSession();
     if (session) { hideGate(); showUser(session.user); warmup(); loadChatList(); }
