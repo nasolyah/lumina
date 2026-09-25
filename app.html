@@ -520,6 +520,26 @@
   /* фрагмент/справка: полная рамка + тонкая заливка (без цветного side-stripe) */
   .src-box { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
     background: rgba(108,99,255,0.05); color: var(--text); font-size: 13.5px; line-height: 1.55; }
+
+  /* ── Карточки слайдов (презентации) ── */
+  .slide-card + .slide-card { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border); }
+  .slide-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 8px; }
+  .slide-num { flex: none; font-family: 'Inter', sans-serif; font-weight: 600; font-size: 10.5px;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--glow);
+    padding: 2px 8px; border: 1px solid var(--border-lit); border-radius: 999px; }
+  .slide-title { font-family: 'Inter', sans-serif; font-weight: 700; font-size: 14.5px; line-height: 1.35; color: var(--white); }
+  .slide-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+  .slide-items li { position: relative; padding-left: 15px; font-size: 13.5px; line-height: 1.5; color: var(--text); }
+  .slide-items li::before { content: ''; position: absolute; left: 1px; top: .62em; width: 5px; height: 5px;
+    border-radius: 50%; background: var(--glow); }
+  .slide-items li.nested::before { background: transparent; border: 1px solid var(--glow); width: 4px; height: 4px; }
+  .slide-items li.h { font-weight: 600; color: var(--white); }
+  .slide-items li.nested { color: #CBD5E1; }
+  .slide-imgs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .slide-imgs img { height: 124px; max-width: 100%; object-fit: contain; background: #fff; cursor: zoom-in;
+    border-radius: 8px; border: 1px solid var(--border); transition: border-color .18s; }
+  .slide-imgs img:hover { border-color: var(--border-lit); }
+
   .src-box.cyan { border-color: rgba(34,211,238,0.22); background: rgba(34,211,238,0.05); }
   .src-label { display: inline-flex; align-items: center; gap: 6px; font-family: 'Inter', sans-serif;
     font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px; }
@@ -857,6 +877,7 @@
   let infographicCache = {}; // node_id → {image,title,points,model} за сессию (переоткрыть/скачать после закрытия модалки)
   let collapsed = new Set(); // id узлов со СВЁРНУТЫМИ детьми (сохраняется между перерисовками)
   let lastManifest = null;   // манифест spatial-режима (страницы+блоки); MVP: только в сессии
+  let lastDeck = null;       // презентация .pptx: {slides:[{title,images}], blocks} → карточки слайдов
   let ingestPromise = null;  // промис фонового ingest PDF (analyze ждёт его до сборки графа)
   let currentView = 'graph'; // 'graph' | 'spatial'
   let treeParent = new Map();// child_id → parent_id остовного дерева (для разворота предков)
@@ -965,6 +986,8 @@
       'doc.figImage': 'Картинка',
       'doc.figZoom': ' — нажмите, чтобы увеличить',
       'doc.pageAlt': 'стр. {n}',
+      'slide.label': 'Слайд {n}',
+      'slide.zoom': 'Нажмите, чтобы увеличить',
       'fig.mentioned': 'Где упоминается в тексте',
       'stats.nodes': 'узлов', 'stats.edges': 'связей', 'stats.words': 'слов',
       'user.default': 'Пользователь',
@@ -1086,6 +1109,8 @@
       'doc.figImage': 'Image',
       'doc.figZoom': ' — click to enlarge',
       'doc.pageAlt': 'page {n}',
+      'slide.label': 'Slide {n}',
+      'slide.zoom': 'Click to enlarge',
       'fig.mentioned': 'Where it’s mentioned in the text',
       'stats.nodes': 'nodes', 'stats.edges': 'links', 'stats.words': 'words',
       'user.default': 'User',
@@ -1270,7 +1295,13 @@
       const ocrTag = data.ocr ? T('file.ocr') : '';
       fname.textContent = T('file.done', { name: file.name, pages: data.pages, unit, chars: data.chars.toLocaleString(LOCALE()), ocr: ocrTag });
       // spatial-манифест строим ТОЛЬКО для PDF (у .pptx нет постраничной вёрстки для вырезок)
-      ingestPromise = isPptx ? null : ingestPdf(file);
+      if (isPptx) {                       // слайды: структура + фото → карточки в модалке узла
+        resetSpatial();
+        lastDeck = data.deck || null;
+        await hydrateDeck(lastDeck);
+      } else {
+        ingestPromise = ingestPdf(file);
+      }
     } catch (err) {
       $('drop').classList.remove('loading');
       fname.textContent = T('src.supported'); fname.dataset.default = '1';
@@ -1317,6 +1348,7 @@
   // сброс spatial-состояния (новый источник/чат): прячем переключатель, назад в граф
   function resetSpatial(){
     lastManifest = null;
+    lastDeck = null;
     ingestPromise = null;   // новый источник — старый ingest не ждём
     currentView = 'graph';
     if (typeof viewState !== 'undefined') { viewState.graph = null; viewState.spatial = null; }
@@ -1380,6 +1412,7 @@
     nodeModalBlock = targetBlock;
     $('nodeToDoc').style.display = nodeModalBlock ? '' : 'none';
     const frag = (n.full || n.snippet || '').trim();
+    const deckEl = (!cropEl && !block) ? slideCardsEl(n) : null;   // презентация → карточки слайдов
     if (cropEl) {
       snip.textContent = '';
       snip.style.maxHeight = '52vh'; snip.style.overflowY = 'auto'; snip.style.overflowX = 'hidden';
@@ -1390,8 +1423,17 @@
       $('nodeSnippetLabel').textContent = T('node.snippet');
       $('nodeSnippetHint').style.display = 'inline-flex'; // подсказка: можно увеличить/прокрутить
       $('nodeSnippetWrap').style.display = '';
+    } else if (deckEl) {
+      snip.textContent = '';
+      snip.style.maxHeight = '52vh'; snip.style.overflowY = 'auto'; snip.style.overflowX = 'hidden';
+      snip.style.display = 'block'; snip.style.alignItems = ''; snip.style.whiteSpace = 'normal';
+      snip.appendChild(deckEl);
+      $('nodeSnippetLabel').textContent = T('node.snippet');
+      $('nodeSnippetHint').style.display = 'none';
+      $('nodeSnippetWrap').style.display = '';
     } else if (frag) {
       snip.textContent = frag;
+      snip.style.whiteSpace = 'pre-wrap';
       snip.style.maxHeight = ''; snip.style.overflowY = '';
       snip.style.display = ''; snip.style.alignItems = ''; snip.style.overflowX = '';
       $('nodeSnippetHint').style.display = 'none';
@@ -1756,8 +1798,10 @@
         // блоки не уйдут в analyze и узлы получат несовпадающие id (см. ingestPromise)
         if (ingestPromise) { try { await ingestPromise; } catch (_) {} }
         // PDF: шлём блоки манифеста → узлы графа придут с их block_ids (точная привязка)
-        const blocks = (lastManifest && lastManifest.blocks)
-          ? lastManifest.blocks.map(b => ({ id: b.id, text: b.text, page: b.page, bbox: b.bbox, kind: b.kind })) : undefined;
+        // строки документа: PDF — блоки манифеста (с координатами), PPTX — строки слайдов
+        const srcBlocks = (lastManifest && lastManifest.blocks) || (lastDeck && lastDeck.blocks) || null;
+        const blocks = srcBlocks
+          ? srcBlocks.map(b => ({ id: b.id, text: b.text, page: b.page, bbox: b.bbox, kind: b.kind })) : undefined;
         res = await fetch(API_BASE + '/api/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
@@ -2114,6 +2158,100 @@
 
   // Манифест для сохранения в чат: только режим Storage (пути лёгкие). Выкидываем
   // транзиентные signed-URL (истекают). В dataurl-режиме не сохраняем (тяжело).
+
+  // ── ПРЕЗЕНТАЦИИ: карточки слайдов ─────────────────────────────────────────────
+  // Слайд не рендерим — рисуем из структуры: «Слайд N · заголовок», пункты узла с уровнями
+  // вложенности и фото этого слайда (клик — увеличить). Фото: data URL или путь в Storage.
+  async function hydrateDeck(d){
+    if (!d) return;
+    d._byId = {};
+    (d.blocks || []).forEach(b => { d._byId[b.id] = b; });
+    const imgs = (d.slides || []).flatMap(s => s.images || []);
+    imgs.forEach(im => { if (im.src && im.src.startsWith('data:')) im.url = im.src; });
+    const paths = imgs.filter(im => im.src && !im.src.startsWith('data:')).map(im => im.src);
+    if (!paths.length || !sb || !d.bucket) return;
+    try {
+      const { data, error } = await sb.storage.from(d.bucket).createSignedUrls(paths, 3600);
+      if (error) { console.warn('hydrateDeck', error.message); return; }
+      const byPath = {};
+      data.forEach((r, i) => { if (r && r.signedUrl) byPath[paths[i]] = r.signedUrl; });
+      imgs.forEach(im => { if (byPath[im.src]) im.url = byPath[im.src]; });
+    } catch (e) { console.warn('hydrateDeck', e); }
+  }
+
+  // в чат: структура + пути фото в Storage (data URL не храним — тяжело для строки таблицы;
+  // без Storage после перезагрузки карточки будут без фото, но с текстом)
+  function slimDeckForSave(d){
+    if (!d) return null;
+    const keep = d.image_kind === 'storage';
+    return {
+      kind: 'pptx', image_kind: d.image_kind, bucket: d.bucket, doc_id: d.doc_id, pages: d.pages,
+      blocks: d.blocks || [],
+      slides: (d.slides || []).map(s => ({
+        index: s.index, title: s.title,
+        images: keep ? (s.images || []).filter(im => im.src && !im.src.startsWith('data:')).map(im => ({ src: im.src })) : [],
+      })),
+    };
+  }
+
+  function slideCardsEl(node){
+    if (!lastDeck || !lastDeck._byId || !node || !node.block_ids) return null;
+    const bs = node.block_ids.map(id => lastDeck._byId[id]).filter(Boolean);
+    if (!bs.length) return null;
+    const slides = [...new Set(bs.map(b => b.page))].sort((a, b) => a - b);
+    const root = document.createElement('div');
+    for (const si of slides) {
+      const sl = (lastDeck.slides || [])[si] || { title: '', images: [] };
+      const card = document.createElement('div');
+      card.className = 'slide-card';
+      const head = document.createElement('div');
+      head.className = 'slide-head';
+      head.innerHTML = `<span class="slide-num">${esc(T('slide.label', { n: si + 1 }))}</span>`
+        + (sl.title ? `<span class="slide-title">${esc(sl.title)}</span>` : '');
+      card.appendChild(head);
+      // пункты узла на этом слайде (заголовок уже в шапке карточки)
+      const items = bs.filter(b => b.page === si && !(b.kind === 'heading' && b.text.trim() === (sl.title || '').trim()));
+      if (items.length) {
+        const ul = document.createElement('ul');
+        ul.className = 'slide-items';
+        items.forEach(b => {
+          const li = document.createElement('li');
+          li.textContent = b.text;
+          const lvl = Math.min(b.level || 0, 4);
+          if (lvl) { li.classList.add('nested'); li.style.marginLeft = (lvl * 16) + 'px'; }
+          if (b.kind === 'heading') li.classList.add('h');
+          ul.appendChild(li);
+        });
+        card.appendChild(ul);
+      }
+      const imgs = (sl.images || []).map(im => im.url).filter(Boolean);
+      if (imgs.length) {
+        const g = document.createElement('div');
+        g.className = 'slide-imgs';
+        imgs.forEach(src => {
+          const im = document.createElement('img');
+          im.src = src; im.alt = ''; im.loading = 'lazy';
+          im.title = T('slide.zoom');
+          im.onclick = () => openImageZoom(src);
+          g.appendChild(im);
+        });
+        card.appendChild(g);
+      }
+      root.appendChild(card);
+    }
+    return root;
+  }
+
+  function openImageZoom(src){
+    const box = $('figBox');
+    box.innerHTML = ''; box.style.background = '#fff';
+    const img = document.createElement('img');
+    img.src = src;
+    img.style.cssText = 'display:block;max-width:100%;height:auto;';
+    box.appendChild(img);
+    $('figOverlay').classList.add('open');
+  }
+
   function slimManifestForSave(m){
     if (!m || m.image_kind !== 'storage') return null;
     return {
@@ -2671,7 +2809,7 @@
     const row = { title, source_text: currentText, messages: chatMessages, mindmap: lastGraph };
     // spatial-манифест (только Storage-режим — лёгкий, пути а не data URL). Требует
     // колонку chats.manifest jsonb (см. supabase_storage.sql). В dataurl-режиме null.
-    const savedManifest = slimManifestForSave(lastManifest);
+    const savedManifest = slimManifestForSave(lastManifest) || slimDeckForSave(lastDeck);
     if (savedManifest) row.manifest = savedManifest;
     // инфографики: только те, что залиты в Storage (есть path). Картинку не храним в
     // строке — только путь + лёгкие метаданные. Требует колонку chats.infographics jsonb.
@@ -2761,7 +2899,10 @@
       // восстановить инфографики: подписать пути из Storage → положить в сессионный кэш
       await restoreInfographics(data.infographics);
       // восстановить spatial из сохранённого манифеста (чаты v2 со Storage)
-      if (data.manifest && data.manifest.pages && data.manifest.pages.length) {
+      if (data.manifest && data.manifest.kind === 'pptx') {      // презентация → карточки слайдов
+        lastDeck = data.manifest;
+        await hydrateDeck(lastDeck);
+      } else if (data.manifest && data.manifest.pages && data.manifest.pages.length) {
         lastManifest = data.manifest;
         await hydrateSpatial(lastManifest);
         $('viewToggle').classList.remove('hidden');

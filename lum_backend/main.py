@@ -366,16 +366,26 @@ async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(require
         mb = MAX_PDF_BYTES // (1024 * 1024)
         raise HTTPException(status_code=400, detail=L(lang, f"Файл слишком большой (макс. {mb} МБ).", f"The file is too large (max {mb} MB)."))
 
-    # ── Презентация .pptx ── (только текст → граф; spatial/вырезки не строим)
+    # ── Презентация .pptx ── структура слайдов (заголовок, пункты, фото) → «карточки
+    # слайдов» на фронте; вкладку «Документ»/вырезки-картинки не строим (нужен рендер).
+    # Фото — в Storage (если настроен, как страницы PDF), иначе data URL в ответе.
     if is_pptx:
+        import storage
+        doc_id = uuid.uuid4().hex
+        image_kind, bucket, sink = "dataurl", None, None
+        if storage.is_configured():
+            sink = storage.make_asset_sink(f"{user.get('sub')}/{doc_id}")
+            image_kind, bucket = "storage", storage.BUCKET
         try:
-            text, slides = core.extract_pptx_text(raw)
+            deck = core.extract_pptx(raw, image_sink=sink)
         except Exception as e:
             logger.warning("extract: pptx parse failed: %s", e)
             raise HTTPException(status_code=400, detail=L(lang, "Не удалось разобрать презентацию", "Could not parse the presentation") + f": {type(e).__name__}")
+        text = deck.pop("text")
         if not text:
             raise HTTPException(status_code=400, detail=L(lang, "В презентации не нашлось текста для разбора.", "No text found in the presentation."))
-        return {"text": text, "chars": len(text), "pages": slides, "kind": "pptx", "ocr": False}
+        deck.update({"kind": "pptx", "doc_id": doc_id, "image_kind": image_kind, "bucket": bucket})
+        return {"text": text, "chars": len(text), "pages": deck["pages"], "kind": "pptx", "ocr": False, "deck": deck}
 
     try:
         from pypdf import PdfReader

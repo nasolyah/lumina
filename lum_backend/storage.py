@@ -62,3 +62,13 @@ def make_sink(prefix: str):
         _upload_webp(path, webp)
         return path
     return sink
+
+
+def make_asset_sink(prefix: str):
+    """sink(name, webp) -> путь `{prefix}/{name}.webp` — для картинок, которые не
+    являются страницами (напр. фото со слайдов презентации)."""
+    def sink(name: str, webp: bytes) -> str:
+        path = f"{prefix}/{name}.webp"
+        _upload_webp(path, webp)
+        return path
+    return sink

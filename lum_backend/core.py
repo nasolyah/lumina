@@ -282,42 +282,133 @@ def _gemini_vision_ocr(webp: bytes, model: str, retries: int = RETRIES) -> str:
     raise PipelineError(f"OCR: все попытки к модели {model} исчерпаны")
 
 
-def extract_pptx_text(raw: bytes) -> tuple[str, int]:
-    """Презентация .pptx → (текст, число слайдов). Текст собираем по слайдам:
-    заголовки/буллеты, таблицы (ячейки через « | »), заметки докладчика. Каждый
-    слайд отделён пустой строкой → дальше режется на блоки-абзацы как обычный текст.
-    python-pptx (MIT) — лицензионно чисто, легаси .ppt не поддерживает."""
-    import io as _io
-    from pptx import Presentation
-    prs = Presentation(_io.BytesIO(raw))
-    slides = list(prs.slides)
-    out = []
-    for i, slide in enumerate(slides):
-        parts = []
-        for shape in slide.shapes:
-            try:
-                if shape.has_text_frame:
-                    for p in shape.text_frame.paragraphs:
-                        line = ("".join(r.text for r in p.runs) or p.text or "").strip()
-                        if line:
-                            parts.append(line)
-                if shape.has_table:
-                    for row in shape.table.rows:
-                        cells = [(_c.text or "").strip() for _c in row.cells]
-                        if any(cells):
-                            parts.append(" | ".join(cells))
-            except Exception:
-                continue   # экзотическая фигура — пропускаем, слайд не роняем
+# ─── ПРЕЗЕНТАЦИИ (.pptx) ──────────────────────────────────────────────────────
+# Слайд не рендерим (для этого нужен LibreOffice) — вытаскиваем СТРУКТУРУ: заголовок,
+# пункты с уровнями вложенности, таблицы и сами картинки, которые лежат внутри файла.
+# Фронт рисует из этого аккуратную «карточку слайда» вместо сплошной стены текста.
+_PPTX_MIN_IMG_PX = 48          # меньше — иконки/буллеты/линии, не фото
+_PPTX_MAX_IMGS_PER_SLIDE = 4
+_PPTX_MAX_IMGS_TOTAL = 60      # потолок на весь файл (размер ответа/Storage)
+
+
+def _pptx_iter_shapes(shapes):
+    """Фигуры слайда, включая вложенные в группы."""
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+    for sh in shapes:
         try:
-            if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
-                note = (slide.notes_slide.notes_text_frame.text or "").strip()
-                if note:
-                    parts.append("Заметки: " + note)
+            if sh.shape_type == MSO_SHAPE_TYPE.GROUP:
+                yield from _pptx_iter_shapes(sh.shapes)
+                continue
         except Exception:
             pass
-        if parts:
-            out.append(f"Слайд {i + 1}\n" + "\n".join(parts))
-    return "\n\n".join(out).strip(), len(slides)
+        yield sh
+
+
+def _pptx_image_webp(blob: bytes) -> bytes | None:
+    """Картинка из .pptx → WebP (≤1200px). None для форматов, которые браузер не
+    покажет (EMF/WMF), битых и мелких (иконки)."""
+    import io as _io
+    from PIL import Image
+    try:
+        im = Image.open(_io.BytesIO(blob))
+        im.load()
+    except Exception:
+        return None
+    if min(im.size) < _PPTX_MIN_IMG_PX:
+        return None
+    if im.mode not in ("RGB", "RGBA"):
+        im = im.convert("RGBA" if (im.mode == "P" or "A" in im.getbands()) else "RGB")
+    im.thumbnail((1200, 1200))
+    buf = _io.BytesIO()
+    im.save(buf, format="WEBP", quality=80, method=4)
+    return buf.getvalue()
+
+
+def extract_pptx(raw: bytes, image_sink=None) -> dict:
+    """Презентация → {text, pages, slides, blocks}.
+
+    text   — весь текст для графа (слайды через пустую строку, + заметки докладчика);
+    slides — [{index, title, images:[{src}]}], src = data URL или путь в Storage (sink);
+    blocks — строки слайдов {id, page=№слайда, kind heading|text, level, text}: по ним
+             ИИ группирует разделы, а узел карты знает свои слайды и пункты.
+    image_sink(name, webp) -> str; сбой sink → картинка остаётся data URL."""
+    import io as _io
+    import hashlib
+    from pptx import Presentation
+
+    def _dataurl(webp: bytes) -> str:
+        return "data:image/webp;base64," + base64.b64encode(webp).decode("ascii")
+
+    prs = Presentation(_io.BytesIO(raw))
+    slides_out, blocks, text_parts = [], [], []
+    total_imgs = 0
+    for si, slide in enumerate(prs.slides):
+        title_shape = None
+        try:
+            title_shape = slide.shapes.title
+        except Exception:
+            pass
+        title = ""
+        if title_shape is not None and getattr(title_shape, "has_text_frame", False):
+            title = (title_shape.text_frame.text or "").strip()
+        items = [("heading", 0, title)] if title else []   # (kind, level, text)
+        # сравниваем по shape_id: python-pptx отдаёт новый объект-обёртку при каждом
+        # обращении, поэтому `is` не отличает заголовок и он дублировался бы пунктом
+        title_id = getattr(title_shape, "shape_id", None)
+        shapes = [sh for sh in _pptx_iter_shapes(slide.shapes)
+                  if title_id is None or getattr(sh, "shape_id", None) != title_id]
+        shapes.sort(key=lambda sh: ((sh.top or 0), (sh.left or 0)))   # порядок чтения, не z-order
+        images, seen = [], set()
+        for sh in shapes:
+            try:
+                if getattr(sh, "has_text_frame", False) and sh.has_text_frame:
+                    for p in sh.text_frame.paragraphs:
+                        line = ("".join(r.text for r in p.runs) or p.text or "").strip()
+                        if line:
+                            items.append(("text", int(p.level or 0), line))
+                if getattr(sh, "has_table", False) and sh.has_table:
+                    for row in sh.table.rows:
+                        cells = [(c.text or "").strip() for c in row.cells]
+                        if any(cells):
+                            items.append(("text", 0, " | ".join(cells)))
+                blob = None
+                if hasattr(sh, "image"):          # картинка или плейсхолдер с картинкой
+                    try:
+                        blob = sh.image.blob
+                    except Exception:
+                        blob = None
+                if blob and len(images) < _PPTX_MAX_IMGS_PER_SLIDE and total_imgs < _PPTX_MAX_IMGS_TOTAL:
+                    digest = hashlib.sha1(blob).hexdigest()
+                    if digest not in seen:
+                        seen.add(digest)
+                        webp = _pptx_image_webp(blob)
+                        if webp:
+                            src = None
+                            if image_sink:
+                                try:
+                                    src = image_sink(f"s{si}_{len(images)}", webp)
+                                except Exception as e:
+                                    logger.warning("pptx: картинка не залита в Storage: %s", e)
+                            images.append({"src": src or _dataurl(webp)})
+                            total_imgs += 1
+            except Exception:
+                continue   # экзотическая фигура — пропускаем, слайд не роняем
+        notes = ""
+        try:
+            if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
+                notes = (slide.notes_slide.notes_text_frame.text or "").strip()
+        except Exception:
+            pass
+        for kind, level, line in items:
+            blocks.append({"id": f"b{len(blocks)}", "page": si, "kind": kind, "level": level, "text": line})
+        body = "\n".join(t for _, _, t in items)
+        if notes:
+            body = (body + "\n" + notes).strip()
+        if body:
+            text_parts.append(body)
+        slides_out.append({"index": si, "title": title, "images": images})
+    return {"text": "\n\n".join(text_parts).strip(), "pages": len(slides_out),
+            "slides": slides_out, "blocks": blocks}
 
 
 def ocr_pdf(raw: bytes, max_pages: int | None = None) -> str:
@@ -1102,6 +1193,8 @@ _SECTIONS_FROM_BLOCKS_SYSTEM = """Ты сегментируешь докумен
 - порядок сохраняй; 4-8 разделов верхнего уровня — не мельчи и не склеивай всё в один;
 - НЕ смешивай в одном разделе РАЗНЫЕ таблицы/факультеты/подтемы, даже если они рядом
   на странице (напр. «Faculty of Architecture» и «HKU Business School» — РАЗНЫЕ разделы);
+- презентации: строки помечены «@слайдN» — заголовок слайда и его пункты держи вместе;
+  соседние слайды на одну тему можно объединять в один раздел;
 - РАЗРЫВ СТРАНИЦЫ — НЕ граница раздела. Строка с пометкой «⤷ПРОДОЛЖЕНИЕ_АБЗАЦА»
   продолжает абзац (часто — середину предложения) с предыдущей страницы: относи её И
   идущие за ней строки этого абзаца к ТОМУ ЖЕ разделу, что и последние строки
@@ -1182,7 +1275,8 @@ def build_sections_from_blocks(blocks: list[dict], in_answer_names: set[str]) ->
     def _pos(b):
         bb = b.get("bbox")
         if not bb or len(bb) < 2:
-            return ""
+            # презентация: координат нет, но слайд известен
+            return f" @слайд{b['page'] + 1}" if b.get("page") is not None else ""
         return f" @стр{(b.get('page') or 0) + 1} x{int(bb[0])} y{int(bb[1])}"
 
     # строки, продолжающие абзац с предыдущей страницы, — явная метка для модели
