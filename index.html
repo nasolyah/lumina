@@ -296,7 +296,7 @@
   .cmp-wrap { overflow-x: auto; }
 
   /* цены: две колонки, без «светящихся» карточек */
-  .prices { margin-top: 36px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; max-width: 860px; }
+  .prices { margin-top: 36px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; max-width: 1080px; }
   .price { border: 1px solid var(--line); border-radius: 10px; padding: 26px; background: var(--sheet); display: flex; flex-direction: column; }
   .price h3 { font-size: 22px; font-weight: 700; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
   .price .soon { font-family: var(--font-ui); font-size: 12.5px; font-weight: 600; color: var(--ink-3); border: 1px solid var(--line-2); border-radius: 6px; padding: 2px 9px; }
@@ -562,6 +562,7 @@
             <li data-i18n="pr.f2">Карта, чат и вопросы к веткам</li>
             <li data-i18n="pr.f3">Ответы со ссылкой на страницу</li>
             <li data-i18n="pr.f4">История разборов</li>
+            <li data-i18n="pr.f5">10 инфографик в месяц</li>
           </ul>
           <button class="btn btn-primary btn-start" onclick="openSidebar()" data-i18n="pr.start">Начать бесплатно</button>
         </div>
@@ -572,8 +573,19 @@
             <li data-i18n="pr.p1">Документы без ограничений</li>
             <li data-i18n="pr.p2">Всё, что есть в бесплатном</li>
             <li data-i18n="pr.p3">Обработка без очереди</li>
+            <li data-i18n="pr.p4">10 инфографик в месяц</li>
           </ul>
           <a class="btn btn-quiet" href="mailto:markingmark33@gmail.com?subject=Lumina%20Pro" data-i18n="pr.write">Написать нам</a>
+        </div>
+        <div class="price">
+          <h3><span>Max</span><span class="soon" data-i18n="pr.soon">Скоро</span></h3>
+          <div class="amount">$15 <small data-i18n="pr.month">в месяц</small></div>
+          <ul>
+            <li data-i18n="pr.m1">Инфографика без ограничений</li>
+            <li data-i18n="pr.m2">Всё, что есть в Pro</li>
+            <li data-i18n="pr.m3">Для учителей и тех, кто готовит материалы</li>
+          </ul>
+          <a class="btn btn-quiet" href="mailto:markingmark33@gmail.com?subject=Lumina%20Max" data-i18n="pr.write">Написать нам</a>
         </div>
       </div>
     </div>
@@ -661,6 +673,8 @@
       'pr.title': 'Цены', 'pr.free': 'Бесплатно',
       'pr.f1': '5 документов', 'pr.f2': 'Карта, чат и вопросы к веткам', 'pr.f3': 'Ответы со ссылкой на страницу', 'pr.f4': 'История разборов',
       'pr.start': 'Начать бесплатно', 'pr.soon': 'Скоро', 'pr.month': 'в месяц',
+      'pr.f5': '10 инфографик в месяц', 'pr.p4': '10 инфографик в месяц',
+      'pr.m1': 'Инфографика без ограничений', 'pr.m2': 'Всё, что есть в Pro', 'pr.m3': 'Для учителей и тех, кто готовит материалы',
       'pr.p1': 'Документы без ограничений', 'pr.p2': 'Всё, что есть в бесплатном', 'pr.p3': 'Обработка без очереди', 'pr.write': 'Написать нам',
       'fin.title': 'Загрузите первый документ. <mark>Это бесплатно.</mark>',
       'fin.cta': 'Попробовать Lumina', 'fin.demo': 'Или посмотреть демо',
@@ -723,6 +737,8 @@
       'pr.title': 'Pricing', 'pr.free': 'Free',
       'pr.f1': '5 documents', 'pr.f2': 'Map, chat and questions about branches', 'pr.f3': 'Answers linked to the page', 'pr.f4': 'History of your documents',
       'pr.start': 'Start for free', 'pr.soon': 'Coming soon', 'pr.month': 'per month',
+      'pr.f5': '10 infographics a month', 'pr.p4': '10 infographics a month',
+      'pr.m1': 'Unlimited infographics', 'pr.m2': 'Everything in Pro', 'pr.m3': 'For teachers and anyone making study materials',
       'pr.p1': 'Unlimited documents', 'pr.p2': 'Everything in Free', 'pr.p3': 'No waiting in the queue', 'pr.write': 'Get in touch',
       'fin.title': 'Upload your first document. <mark>It’s free.</mark>',
       'fin.cta': 'Try Lumina', 'fin.demo': 'Or see the demo',

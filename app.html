@@ -910,6 +910,7 @@
         <button id="nodeInfographicView" class="mbtn" title="Открыть уже созданную инфографику" data-i18n-title="node.infographicViewTitle" style="display:none;">
           <span class="ic" data-ic="image" data-sz="15"></span><span class="mbtn-lbl" data-i18n="node.infographicView">Открыть инфографику</span></button>
       </div>
+      <div id="infoQuota" style="display:none;margin-top:8px;font-size:12px;color:var(--muted);"></div>
       <div id="nodeDesc" style="margin:10px 0 0;color:var(--text-2);font-size:14px;line-height:1.5;"></div>
       <div id="nodeSnippetWrap" style="margin-top:18px;">
         <div class="src-label" style="color:var(--accent);"><span class="ic" data-ic="doc" data-sz="13"></span><span id="nodeSnippetLabel" data-i18n="node.snippet">Фрагмент источника</span></div>
@@ -940,14 +941,14 @@
     <div class="modal" style="position:relative; max-width:460px; text-align:center;">
       <button id="paywallClose" class="icon-btn modal-close" aria-label="Закрыть" data-i18n-aria="common.close" title="Закрыть" data-i18n-title="common.close"><span class="ic" data-ic="close" data-sz="18"></span></button>
       <div style="color:var(--glow);margin-bottom:10px;"><span class="ic" data-ic="spark" data-sz="34"></span></div>
-      <h2 style="margin:0 0 8px;" data-i18n="pay.title">Бесплатные документы закончились</h2>
+      <h2 id="paywallTitle" style="margin:0 0 8px;" data-i18n="pay.title">Бесплатные документы закончились</h2>
       <div class="sub" id="paywallText" style="margin-bottom:18px;" data-i18n="pay.text">Вы разобрали все 5 бесплатных документов.</div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:18px;text-align:left;font-size:13.5px;color:var(--text-2);line-height:1.6;" data-i18n="pay.offer">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:18px;text-align:left;font-size:13.5px;color:var(--text-2);line-height:1.6;" id="paywallOffer" data-i18n="pay.offer">
         Хотите продолжить без ограничений? Напишите нам, и мы откроем доступ к Pro за $5 в месяц.
       </div>
-      <a class="btn primary" style="display:block;text-align:center;padding:12px 20px;box-sizing:border-box;text-decoration:none;"
+      <a class="btn primary" id="paywallCta" style="display:block;text-align:center;padding:12px 20px;box-sizing:border-box;text-decoration:none;"
          href="mailto:markingmark33@gmail.com?subject=Lumina%20Pro%3A%20%D1%85%D0%BE%D1%87%D1%83%20%D0%B4%D0%BE%D1%81%D1%82%D1%83%D0%BF" data-i18n="pay.cta">Запросить доступ к Pro</a>
-      <div style="font-size:11.5px;color:var(--muted);margin-top:12px;" data-i18n="pay.note">Созданные графы остаются доступны в «Мои чаты». Удаление чата не возвращает слот.</div>
+      <div id="paywallNote" style="font-size:11.5px;color:var(--muted);margin-top:12px;" data-i18n="pay.note">Созданные графы остаются доступны в «Мои чаты». Удаление чата не возвращает слот.</div>
     </div>
   </div>
 
@@ -1166,6 +1167,13 @@
       'pay.offer': 'Хотите продолжить без ограничений? Напишите нам, и мы откроем доступ к Pro за $5 в месяц.',
       'pay.cta': 'Запросить доступ к Pro',
       'pay.subject': 'Lumina Pro: хочу доступ',
+      'info.quota': 'Инфографик в этом месяце: осталось {left} из {limit}',
+      'infoLimit.title': 'Инфографика на этот месяц закончилась',
+      'infoLimit.text': 'Вы создали {used} из {limit} инфографик в этом месяце. Лимит обновится 1-го числа.',
+      'infoLimit.offer': 'Нужно больше? В тарифе Max инфографика без ограничений. Напишите нам, и мы откроем доступ.',
+      'infoLimit.cta': 'Запросить доступ к Max',
+      'infoLimit.subject': 'Lumina Max: хочу доступ',
+      'infoLimit.note': 'Уже созданные инфографики остаются в своих разделах.',
       'pay.note': 'Созданные графы остаются доступны в «Мои чаты». Удаление чата не возвращает слот.',
       'fb.title': 'Оставить отзыв',
       'fb.sub': 'Расскажите, что понравилось или что можно улучшить.',
@@ -1297,6 +1305,13 @@
       'pay.offer': 'Want to keep going without limits? Write to us and we’ll open Pro access for $5 a month.',
       'pay.cta': 'Request Pro access',
       'pay.subject': 'Lumina Pro: access request',
+      'info.quota': 'Infographics this month: {left} of {limit} left',
+      'infoLimit.title': 'You’ve used this month’s infographics',
+      'infoLimit.text': 'You’ve created {used} of {limit} infographics this month. The limit resets on the 1st.',
+      'infoLimit.offer': 'Need more? The Max plan has unlimited infographics. Write to us and we’ll open access.',
+      'infoLimit.cta': 'Request Max access',
+      'infoLimit.subject': 'Lumina Max: access request',
+      'infoLimit.note': 'Infographics you’ve already made stay in their sections.',
       'pay.note': 'Maps you’ve created stay in “My chats”. Deleting a chat doesn’t free up a slot.',
       'fb.title': 'Leave feedback',
       'fb.sub': 'Tell us what you liked or what we could do better.',
@@ -1578,6 +1593,8 @@
 
   function openNodeModal(n, block){
     nodeModalId = n.id;
+    renderInfoQuota();
+    if (!infoQuota) refreshInfoQuota();
     const secBlocks = nodeBlocks(n);   // блоки узла (пусто у узла-ответа/старого графа)
     $('nodeTitle').textContent = n.name || '';
     $('nodeType').textContent = TYPE_LABEL[n.type] || n.type || '';
@@ -1728,6 +1745,7 @@
     const node = lastGraph.nodes.find(x => x.id === nodeModalId);
     if (!node) return;
     const nid = node.id;
+    if (infoQuota && infoQuota.limit != null && infoQuota.left <= 0) { openInfoLimit(infoQuota.used, infoQuota.limit); return; }
     const btn = $('nodeInfographic');
     const lbl = btn.querySelector('.mbtn-lbl');
     const prev = lbl ? lbl.textContent : '';
@@ -1745,9 +1763,19 @@
       const data = await res.json();
       if (!res.ok) {
         if (res.status === 401) showGate(T('session.expired'));
-        showInfographicError(data.detail || T('info.failed'));
+        const d = data.detail;
+        if (res.status === 402 && d && d.code === 'INFOGRAPHIC_LIMIT') {
+          $('figOverlay').classList.remove('open');
+          infoQuota = { ...(infoQuota || {}), used: d.used, limit: d.limit, left: 0 };
+          renderInfoQuota();
+          openInfoLimit(d.used, d.limit);
+          return;
+        }
+        showInfographicError((typeof d === 'string' ? d : d && d.message) || T('info.failed'));
         return;
       }
+      if (data.quota) { infoQuota = data.quota; renderInfoQuota(); }
+      delete data.quota;
       infographicCache[nid] = data;           // кэш за сессию → переоткрыть/скачать позже
       openInfographic(data);
       // персист: заливаем PNG в Storage и сохраняем метаданные в чат (между сессиями).
@@ -1910,11 +1938,37 @@
   // владельцы без лимита (совпадает с исключением в триггере check_chat_limit)
   const OWNER_EMAILS = ['markingmark33@gmail.com'];
   const paywallOverlay = $('paywallOverlay');
-  function openPaywall(used){
-    if (typeof used === 'number') {
-      $('paywallText').textContent = T('pay.textN', { used, limit: FREE_GRAPH_LIMIT });
-    }
+  function setPaywall(k, textVal){
+    $('paywallTitle').textContent = T(k + '.title');
+    $('paywallText').textContent = textVal;
+    $('paywallOffer').textContent = T(k + '.offer');
+    $('paywallCta').textContent = T(k + '.cta');
+    $('paywallCta').href = $('paywallCta').href.split('?')[0] + '?subject=' + encodeURIComponent(T(k + '.subject'));
+    $('paywallNote').textContent = T(k + '.note');
     paywallOverlay.classList.add('open');
+  }
+  function openPaywall(used){
+    setPaywall('pay', typeof used === 'number' ? T('pay.textN', { used, limit: FREE_GRAPH_LIMIT }) : T('pay.text'));
+  }
+
+  // ── ЛИМИТ ИНФОГРАФИКИ ── 10 картинок в месяц (тариф Max и владелец — без лимита).
+  // Считает и проверяет бэкенд по таблице usage_events; здесь — показ остатка и окно.
+  let infoQuota = null;   // {plan, used, limit (null = безлимит), left}
+  function renderInfoQuota(){
+    const el = $('infoQuota');
+    if (DEMO || !infoQuota || infoQuota.limit == null) { el.style.display = 'none'; return; }
+    el.textContent = T('info.quota', { left: infoQuota.left, limit: infoQuota.limit });
+    el.style.display = '';
+  }
+  async function refreshInfoQuota(){
+    if (DEMO) return;
+    try {
+      const res = await fetch(API_BASE + '/api/quota', { headers: { ...(await authHeader()) } });
+      if (res.ok) { infoQuota = (await res.json()).infographics; renderInfoQuota(); }
+    } catch (_) {}
+  }
+  function openInfoLimit(used, limit){
+    setPaywall('infoLimit', T('infoLimit.text', { used, limit }));
   }
   function closePaywall(){ paywallOverlay.classList.remove('open'); }
   $('paywallClose').onclick = closePaywall;
@@ -1926,6 +1980,8 @@
   async function countUserGraphs(){
     if (!sb) return 0;
     if (OWNER_EMAILS.includes(currentUserEmail)) return 0;   // владелец — без лимита
+    const { data: planRow } = await sb.from('user_plans').select('plan').maybeSingle();
+    if (planRow && (planRow.plan === 'pro' || planRow.plan === 'max')) return 0;   // платный тариф
     const { data, error } = await sb.from('usage_counters').select('graphs_used').maybeSingle();
     if (error) { console.error('countUserGraphs', error); return 0; }
     return (data && data.graphs_used) || 0;

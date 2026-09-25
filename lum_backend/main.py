@@ -33,6 +33,7 @@ logger = logging.getLogger("lumina")
 from pydantic import BaseModel, Field
 
 import core
+import usage   # учёт расхода Gemini по пользователям + лимит инфографики
 
 app = FastAPI(
     title="Lum / Lumina API",
@@ -211,8 +212,11 @@ def analyze(req: AnalyzeRequest, user: dict = Depends(require_user), lang: str =
                            f"Text is too large ({len(req.text)} chars, max {MAX_TEXT_CHARS})."),
         )
     blocks = [b.model_dump() for b in req.blocks] if req.blocks else None
+    usage.start(); ok = False
     try:
-        return core.run_pipeline(text=req.text, query=req.query, blocks=blocks)
+        result = core.run_pipeline(text=req.text, query=req.query, blocks=blocks)
+        ok = True
+        return result
     except core.PipelineError as e:
         # Ожидаемые ошибки пайплайна (пустой ввод, нет ключа, Gemini упал) → 400.
         # Логируем текст ошибки — он же уходит в HTTP detail, но здесь виден в логах Render.
@@ -222,6 +226,8 @@ def analyze(req: AnalyzeRequest, user: dict = Depends(require_user), lang: str =
         # Непредвиденное → 500, но без утечки внутренних деталей наружу
         logger.exception("analyze: непредвиденная ошибка")
         raise HTTPException(status_code=500, detail=L(lang, "Внутренняя ошибка", "Internal error") + f": {type(e).__name__}")
+    finally:
+        usage.flush(user, "analyze", ok)
 
 
 @app.post("/api/ask")
@@ -233,14 +239,19 @@ def ask(req: AskRequest, user: dict = Depends(require_user), lang: str = Depends
     Возвращает: answer, explanation, in_answer_names (для пересветки дерева).
     """
     core.set_lang(lang)
+    usage.start(); ok = False
     try:
-        return core.answer_from_state(req.graph_state, req.query)
+        result = core.answer_from_state(req.graph_state, req.query)
+        ok = True
+        return result
     except core.PipelineError as e:
         logger.error("ask: PipelineError: %s", e)
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception("ask: непредвиденная ошибка")
         raise HTTPException(status_code=500, detail=L(lang, "Внутренняя ошибка", "Internal error") + f": {type(e).__name__}")
+    finally:
+        usage.flush(user, "ask", ok)
 
 
 @app.post("/api/feedback")
@@ -303,6 +314,7 @@ def ask_node(req: AskNodeRequest, user: dict = Depends(require_user), lang: str 
     модели — не полный пайплайн (быстро/дёшево). Требует валидный Supabase-JWT.
     """
     core.set_lang(lang)
+    usage.start(); ok = False
     try:
         # заземляем на весь документ: топ дословных фрагментов по вопросу (через ключ),
         # а не только текст ветки — чтобы ответ был по документу, не из памяти модели
@@ -317,6 +329,7 @@ def ask_node(req: AskNodeRequest, user: dict = Depends(require_user), lang: str 
         )
         if not node:
             raise HTTPException(status_code=400, detail=L(lang, "Не удалось сформировать ответ по этой ветке.", "Could not answer for this branch."))
+        ok = True
         return node
     except core.PipelineError as e:
         logger.error("ask_node: PipelineError: %s", e)
@@ -326,23 +339,49 @@ def ask_node(req: AskNodeRequest, user: dict = Depends(require_user), lang: str 
     except Exception:
         logger.exception("ask_node: непредвиденная ошибка")
         raise HTTPException(status_code=500, detail=L(lang, "Внутренняя ошибка", "Internal error"))
+    finally:
+        usage.flush(user, "ask-node", ok)
 
 
 @app.post("/api/infographic")
 def infographic(req: InfographicRequest, user: dict = Depends(require_user), lang: str = Depends(get_lang)):
     """
     Генерирует картинку-инфографику по тексту раздела через image-модель Gemini
-    (тот же ключ). Возвращает {image (data URL), title, points}. Требует JWT.
+    (тот же ключ). Возвращает {image (data URL), title, points, quota}. Требует JWT.
+    Лимит: INFOGRAPHIC_MONTHLY_LIMIT картинок в месяц (кроме тарифа max и владельца) —
+    считается по usage_events, превышение → 402 с кодом INFOGRAPHIC_LIMIT.
     """
     core.set_lang(lang)
+    quota = usage.infographic_quota(user)
+    if quota["limit"] is not None and quota["used"] >= quota["limit"]:
+        raise HTTPException(status_code=402, detail={
+            "code": "INFOGRAPHIC_LIMIT", "used": quota["used"], "limit": quota["limit"],
+            "message": L(lang, f"Лимит инфографики на этот месяц исчерпан ({quota['used']} из {quota['limit']}).",
+                               f"You have used all infographics for this month ({quota['used']} of {quota['limit']})."),
+        })
+    usage.start(); ok = False
     try:
-        return core.generate_infographic(node_title=req.node_title, node_text=req.node_text)
+        result = core.generate_infographic(node_title=req.node_title, node_text=req.node_text)
+        ok = True
+        used = quota["used"] + 1
+        result["quota"] = {**quota, "used": used,
+                           "left": None if quota["limit"] is None else max(0, quota["limit"] - used)}
+        return result
     except core.PipelineError as e:
         logger.error("infographic: PipelineError: %s", e)
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
         logger.exception("infographic: непредвиденная ошибка")
         raise HTTPException(status_code=500, detail=L(lang, "Внутренняя ошибка", "Internal error"))
+    finally:
+        # синхронно: следующий запрос лимита должен уже видеть эту картинку
+        usage.flush(user, "infographic", ok, wait=True)
+
+
+@app.get("/api/quota")
+def get_quota(user: dict = Depends(require_user)):
+    """Тариф и остаток инфографики на текущий месяц — фронт показывает «осталось N из 10»."""
+    return {"infographics": usage.infographic_quota(user)}
 
 
 @app.post("/api/extract")
@@ -413,12 +452,15 @@ async def extract_pdf(file: UploadFile = File(...), user: dict = Depends(require
     # в Gemini осознанно — единственный способ прочитать скан (см. core.ocr_pdf).
     ocr_used = False
     if len(text) < max(40, 15 * pages) and core.OCR_ENABLED:
+        usage.start()
         try:
             ocr_text = core.ocr_pdf(raw)
             if len(ocr_text) > len(text):
                 text, ocr_used = ocr_text, True
         except core.PipelineError as e:
             logger.warning("extract: OCR не удался: %s", e)
+        finally:
+            usage.flush(user, "ocr", ocr_used)
 
     if not text:
         raise HTTPException(

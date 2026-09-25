@@ -26,6 +26,8 @@ import base64
 import logging
 import requests
 
+import usage   # учёт реального расхода Gemini по пользователям (usage.py)
+
 # basicConfig идемпотентен (no-op, если хендлер уже есть — напр. настроен в main.py);
 # это позволяет видеть логи и при отдельном запуске core.py (напр. passkey_test.py).
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -102,7 +104,8 @@ EMBED_URL_TMPL  = "https://generativelanguage.googleapis.com/v1beta/models/{mode
 #   любую image-способную. Так «not found» из-за смены имён у Google само лечится.
 IMAGE_MODEL = os.environ.get("IMAGE_MODEL", "")
 IMAGE_MODEL_CANDIDATES = [
-    "gemini-3-pro-image-preview",     # Nano Banana Pro — новейшая, лучшее качество
+    "gemini-3-pro-image",             # Nano Banana Pro (GA-имя)
+    "gemini-3-pro-image-preview",     # Nano Banana Pro — прежнее preview-имя
     "gemini-2.5-flash-image",         # Nano Banana (GA)
     "gemini-2.5-flash-image-preview",
 ]
@@ -193,6 +196,7 @@ def call_llm(system: str, user: str, model: str = POWER_MODEL, retries: int = RE
                     time.sleep(wait)
                     continue
                 raise PipelineError(f"Gemini API ({model}): {msg}")
+            usage.record(model, "text", data)
 
             # запрос мог быть отклонён фильтрами ещё до генерации
             block = (data.get("promptFeedback") or {}).get("blockReason")
@@ -267,6 +271,7 @@ def _gemini_vision_ocr(webp: bytes, model: str, retries: int = RETRIES) -> str:
                     time.sleep(6.0 + attempt * 4.0)
                     continue
                 raise PipelineError(f"Gemini Vision ({model}): {msg}")
+            usage.record(model, "ocr", data)
             cands = data.get("candidates") or []
             if not cands:
                 return ""
@@ -556,6 +561,8 @@ def _gemini_generate_image(prompt: str, model: str, retries: int = RETRIES) -> t
                 raise PipelineError(f"Gemini image ({model}): {msg}")
             cands = data.get("candidates") or []
             parts = ((cands[0].get("content") or {}) if cands else {}).get("parts") or []
+            n_img = sum(1 for p in parts if (p.get("inlineData") or p.get("inline_data") or {}).get("data"))
+            usage.record(model, "image", data, images=n_img)
             for p in parts:
                 blob = p.get("inlineData") or p.get("inline_data")
                 if blob and blob.get("data"):
@@ -654,6 +661,8 @@ def embed_texts(texts: list[str]) -> list[list[float]] | None:
                               headers={"Content-Type": "application/json"},
                               json=body, timeout=60)
             if r.ok:
+                usage.record(EMBED_MODEL, "embed", None,
+                             est_input_tokens=sum(len(t or "") for t in texts) // 3)
                 embs = (r.json().get("embeddings") or [])
                 if len(embs) == len(texts) and all(e.get("values") for e in embs):
                     return [e["values"] for e in embs]
