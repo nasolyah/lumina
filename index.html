@@ -89,7 +89,8 @@
       --on-accent: oklch(0.18 0.02 262);
       --accent-soft: oklch(0.27 0.05 264);
       --marker:  oklch(0.86 0.15 102);
-      --hl: oklch(0.50 0.10 92);     /* на тёмном: приглушённая горчица под СВЕТЛЫМ текстом */
+      --hl: var(--marker);           /* и на тёмном — ярко-жёлтый маркер, текст на нём тёмный */
+      --hl-ink: var(--marker-ink);
       --mk-blue:   oklch(0.78 0.08 235);
       --mk-green:  oklch(0.80 0.11 150);
       --mk-pink:   oklch(0.78 0.09 355);
@@ -119,7 +120,8 @@
     --on-accent: oklch(0.18 0.02 262);
     --accent-soft: oklch(0.27 0.05 264);
     --marker:  oklch(0.86 0.15 102);
-    --hl: oklch(0.50 0.10 92);
+    --hl: var(--marker);
+    --hl-ink: var(--marker-ink);
     --mk-blue:   oklch(0.78 0.08 235);
     --mk-green:  oklch(0.80 0.11 150);
     --mk-pink:   oklch(0.78 0.09 355);
@@ -150,16 +152,18 @@
 
   .wrap { max-width: 1180px; margin: 0 auto; padding: 0 clamp(20px, 4vw, 40px); }
 
-  /* маркер: выделение как на бумаге (нижние ~2/3 строки), «проводится» при загрузке */
+  /* маркер: сплошная ровная заливка на всю высоту букв (от верха заглавных до
+     нижней линии), «проводится» при загрузке. Проценты — от блока строки шрифта,
+     поэтому полоса одинаково ложится на любом размере. */
   mark, .mk {
     color: var(--hl-ink); background-color: transparent;   /* у <mark> есть браузерная жёлтая заливка на весь блок */
     background-image: linear-gradient(var(--hl), var(--hl));
-    background-repeat: no-repeat; background-position: 0 88%; background-size: 100% 72%;
-    padding: 0 .08em; border-radius: .15em;
+    background-repeat: no-repeat; background-position: 0 50%; background-size: 100% 74%;
+    padding: 0 .1em; border-radius: .08em;
     -webkit-box-decoration-break: clone; box-decoration-break: clone;
   }
   .mk-draw { animation: mkdraw 1.1s cubic-bezier(.22,1,.36,1) .35s both; }
-  @keyframes mkdraw { from { background-size: 0% 72%; } to { background-size: 100% 72%; } }
+  @keyframes mkdraw { from { background-size: 0% 74%; } to { background-size: 100% 74%; } }
 
   /* ── NAV ── */
   .nav { position: sticky; top: 0; z-index: 50; background: color-mix(in oklch, var(--paper) 88%, transparent);
@@ -209,10 +213,10 @@
   .hero { padding: clamp(40px, 7vw, 88px) 0 clamp(56px, 8vw, 104px); }
   .hero-grid { display: grid; grid-template-columns: minmax(0, 1.02fr) minmax(0, 1fr); gap: clamp(32px, 5vw, 72px); align-items: center; }
   h1, h2, h3 { font-family: var(--font-display); color: var(--ink); text-wrap: balance; }
-  h1 { font-size: clamp(2.4rem, 1.3rem + 3.4vw, 4.1rem); line-height: 1.12; font-weight: 700; letter-spacing: -0.02em; }
-  /* в крупных заголовках маркер ниже и уже — не наезжает на строку выше */
-  h1 mark, h2 mark { background-size: 100% 52%; background-position: 0 96%; }
-  @keyframes mkdrawH { from { background-size: 0% 52%; } to { background-size: 100% 52%; } }
+  h1 { font-size: clamp(2.4rem, 1.3rem + 3.4vw, 4.1rem); line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; }
+  /* в заголовках строки чуть свободнее (1.2) — полосы маркера не слипаются */
+  h1 mark, h2 mark { background-size: 100% 73%; background-position: 0 50%; }
+  @keyframes mkdrawH { from { background-size: 0% 73%; } to { background-size: 100% 73%; } }
   h1 .mk-draw { animation-name: mkdrawH; }
   .hero-sub { margin-top: 22px; font-size: clamp(17px, 1.05rem + .3vw, 19.5px); color: var(--ink-2); max-width: 36ch; text-wrap: pretty; }
   .hero-cta { margin-top: 32px; display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
@@ -242,7 +246,7 @@
   .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(32px, 6vw, 88px); align-items: center; }
   .split.rev .split-text { order: 2; }
   .split.map-split { grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr); }
-  h2 { font-size: clamp(1.9rem, 1.2rem + 2vw, 2.9rem); line-height: 1.12; font-weight: 700; letter-spacing: -0.015em; }
+  h2 { font-size: clamp(1.9rem, 1.2rem + 2vw, 2.9rem); line-height: 1.2; font-weight: 700; letter-spacing: -0.015em; }
   .lead { margin-top: 18px; color: var(--ink-2); max-width: 46ch; text-wrap: pretty; }
   .points { margin-top: 28px; list-style: none; display: grid; gap: 16px; max-width: 48ch; }
   .points li { padding-left: 22px; position: relative; color: var(--ink-2); }
@@ -292,7 +296,7 @@
   .cmp td.us { color: var(--ink); width: 40%; }
   .cmp td.them { color: var(--ink-3); }
   .cmp thead th.us span { background-image: linear-gradient(var(--hl), var(--hl)); background-repeat: no-repeat;
-    background-position: 0 90%; background-size: 100% 60%; color: var(--ink); padding: 0 .1em; }
+    background-position: 0 50%; background-size: 100% 74%; color: var(--hl-ink); padding: 0 .1em; border-radius: .08em; }
   .cmp-wrap { overflow-x: auto; }
 
   /* цены: две колонки, без «светящихся» карточек */
