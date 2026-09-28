@@ -340,7 +340,8 @@
     display: flex; align-items: center; justify-content: center; gap: 12px; font-weight: 600; font-size: 16px; cursor: pointer; transition: border-color .15s; }
   .google-btn:hover { border-color: var(--ink-3); }
   /* официальная кнопка Google (gsi.js); пока она не готова — наша кнопка-редирект */
-  .gsi-slot { display: none; min-height: 44px; justify-content: center; }
+  /* color-scheme: light — иначе на тёмной теме браузер заливает фрейм Google белым */
+  .gsi-slot { display: none; min-height: 44px; justify-content: center; color-scheme: light; }
   body.gsi-on .gsi-slot { display: flex; }
   body.gsi-on #googleSignIn { display: none; }
   .google-btn svg { width: 20px; height: 20px; }

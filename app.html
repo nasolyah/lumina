@@ -490,7 +490,8 @@
   }
   .google-btn:hover:not(:disabled) { border-color: var(--muted); }
   /* официальная кнопка Google (gsi.js); пока она не готова — наша кнопка-редирект */
-  .gsi-slot { display: none; min-height: 44px; justify-content: center; }
+  /* color-scheme: light — иначе на тёмной теме браузер заливает фрейм Google белым */
+  .gsi-slot { display: none; min-height: 44px; justify-content: center; color-scheme: light; }
   body.gsi-on .gsi-slot { display: flex; }
   body.gsi-on #googleSignIn { display: none; }
   .google-btn:active { transform: translateY(1px); }
