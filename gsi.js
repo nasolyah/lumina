@@ -10,7 +10,7 @@
 // CLIENT_ID — публичный идентификатор веб-клиента OAuth из Google Cloud (тот же,
 // что указан в Supabase → Authentication → Providers → Google). Не секрет.
 window.LuminaGSI = (function () {
-  const CLIENT_ID = '';
+  const CLIENT_ID = '938557570146-899mlhl66507qjsbma15qbisqaic0nm6.apps.googleusercontent.com';
 
   let sb = null, onError = null, rawNonce = null, ready = false;
 
