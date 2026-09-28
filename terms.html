@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Условия использования · Lumina</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%228%22%20fill%3D%22%231b2233%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%2218%22%20width%3D%2218%22%20height%3D%226%22%20rx%3D%222%22%20fill%3D%22%23f5dc4a%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%229%22%20width%3D%2213%22%20height%3D%223%22%20rx%3D%221.5%22%20fill%3D%22%23f9fafb%22%2F%3E%3C%2Fsvg%3E">
+<script>
+  // тема и язык — общие с лендингом (localStorage), ставим до отрисовки
+  (function () {
+    try {
+      var t = localStorage.getItem('lumina_theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (e) {}
+    var lang = (function () {
+      try {
+        var q = new URLSearchParams(location.search).get('lang');
+        if (q === 'ru' || q === 'en') { localStorage.setItem('lumina_lang', q); return q; }
+        var s = localStorage.getItem('lumina_lang');
+        if (s === 'ru' || s === 'en') return s;
+      } catch (e) {}
+      var l = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+      return String(l).toLowerCase().indexOf('ru') === 0 ? 'ru' : 'en';
+    })();
+    document.documentElement.lang = lang;
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,600;7..72,700&family=Onest:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: oklch(0.985 0.004 255); --sheet: #ffffff;
+    --ink: oklch(0.23 0.035 262); --ink-2: oklch(0.40 0.03 262); --ink-3: oklch(0.52 0.025 262);
+    --line: oklch(0.91 0.008 262); --accent: oklch(0.46 0.17 264);
+    --marker: oklch(0.92 0.16 103); --hl: var(--marker); --hl-ink: var(--ink);
+    --font-ui: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-display: 'Literata', Georgia, 'Times New Roman', serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --paper: oklch(0.175 0.018 262); --sheet: oklch(0.215 0.02 262);
+      --ink: oklch(0.95 0.008 262); --ink-2: oklch(0.80 0.015 262); --ink-3: oklch(0.68 0.02 262);
+      --line: oklch(0.30 0.02 262); --accent: oklch(0.76 0.12 264);
+      --hl: oklch(0.58 0.125 91); --hl-ink: var(--ink);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: oklch(0.175 0.018 262); --sheet: oklch(0.215 0.02 262);
+    --ink: oklch(0.95 0.008 262); --ink-2: oklch(0.80 0.015 262); --ink-3: oklch(0.68 0.02 262);
+    --line: oklch(0.30 0.02 262); --accent: oklch(0.76 0.12 264);
+    --hl: oklch(0.58 0.125 91); --hl-ink: var(--ink);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-ui); font-size: 17px; line-height: 1.65; background: var(--paper); color: var(--ink-2); }
+  a { color: var(--accent); text-underline-offset: 2px; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 20px; }
+  header { border-bottom: 1px solid var(--line); }
+  .bar { display: flex; align-items: center; gap: 10px; height: 64px; }
+  .wordmark { font-family: var(--font-display); font-weight: 700; font-size: 22px; color: var(--ink);
+    text-decoration: none; display: inline-flex; align-items: baseline; margin-right: auto; }
+  .wordmark .mk { color: var(--hl-ink); background-image: linear-gradient(var(--hl), var(--hl)); background-repeat: no-repeat;
+    background-position: 0 50%; background-size: 100% 74%; padding: 0 .1em; border-radius: .08em; }
+  .bar button { height: 36px; min-width: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: transparent; color: var(--ink-2); font: 600 13px var(--font-ui); cursor: pointer; }
+  .bar button:hover { color: var(--ink); }
+  main { padding: 48px 0 72px; }
+  h1 { font-family: var(--font-display); color: var(--ink); font-size: clamp(2rem, 1.4rem + 2vw, 2.7rem); line-height: 1.2; letter-spacing: -0.015em; }
+  .updated { margin-top: 10px; font-size: 14px; color: var(--ink-3); }
+  .lead { margin-top: 22px; }
+  h2 { font-family: var(--font-display); color: var(--ink); font-size: 1.3rem; line-height: 1.3; margin-top: 38px; }
+  p, ul { margin-top: 12px; }
+  ul { padding-left: 1.2em; }
+  li { margin-top: 6px; }
+  b { color: var(--ink); font-weight: 600; }
+  footer { border-top: 1px solid var(--line); padding: 24px 0 40px; font-size: 14px; color: var(--ink-3); }
+  footer .wrap { display: flex; gap: 18px; flex-wrap: wrap; }
+  footer a { color: var(--ink-2); text-decoration: none; }
+  footer a:hover { color: var(--ink); }
+  html[lang="ru"] [lang="en"], html[lang="en"] [lang="ru"] { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <a class="wordmark" href="index.html"><span class="mk">lu</span>mina</a>
+    <button type="button" id="langBtn"></button>
+    <button type="button" id="themeBtn" aria-label="Тема / Theme"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:auto"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  </div>
+</header>
+<main class="wrap">
+<article lang="ru">
+  <h1>Условия использования</h1>
+  <p class="updated">Последнее обновление: 28 сентября 2026 г.</p>
+  <p class="lead">Эти условия действуют, когда вы пользуетесь Lumina (luminalm.xyz). Входя в сервис, вы соглашаетесь с ними и с <a href="privacy.html">Политикой конфиденциальности</a>.</p>
+
+  <h2>Что такое Lumina</h2>
+  <p>Lumina разбирает документы с помощью ИИ: делит их на разделы, строит карту, отвечает на вопросы, показывает место в документе, откуда взят ответ, и создаёт инфографику.</p>
+
+  <h2>Аккаунт</h2>
+  <p>Вход выполняется через аккаунт Google. Вы отвечаете за действия, совершённые через ваш аккаунт. Если вам меньше 14 лет, пользуйтесь сервисом с согласия родителей или законных представителей.</p>
+
+  <h2>Ваши материалы</h2>
+  <ul>
+    <li>Права на загруженные документы остаются у вас. Мы используем их только для работы сервиса: разбора, ответов и хранения вашей истории.</li>
+    <li>Загружайте только материалы, которыми вы вправе пользоваться, и не загружайте незаконный контент.</li>
+  </ul>
+
+  <h2>Ответы ИИ</h2>
+  <p>ИИ может ошибаться. Проверяйте важные сведения по самому документу: для этого Lumina показывает, где находится ответ. Ответы сервиса не являются юридической, медицинской, финансовой или иной профессиональной консультацией.</p>
+
+  <h2>Тарифы и лимиты</h2>
+  <ul>
+    <li><b>Бесплатный тариф:</b> 5 документов, без инфографики.</li>
+    <li><b>Pro и Max:</b> расширенные лимиты, условия и цены указаны на странице с тарифами. Пока доступ открывается по запросу на <a href="mailto:markingmark33@gmail.com">markingmark33@gmail.com</a>.</li>
+    <li>Мы можем менять лимиты и тарифы. Об изменениях мы сообщим на сайте заранее.</li>
+  </ul>
+
+  <h2>Что запрещено</h2>
+  <ul>
+    <li>обходить лимиты и ограничения сервиса;</li>
+    <li>отправлять массовые автоматические запросы;</li>
+    <li>пытаться получить доступ к чужим данным или нарушить работу сервиса;</li>
+    <li>использовать сервис для нарушения закона или чужих прав.</li>
+  </ul>
+
+  <h2>Прекращение использования</h2>
+  <p>Вы можете в любой момент перестать пользоваться сервисом и попросить удалить аккаунт. Мы можем ограничить доступ к сервису при нарушении этих условий.</p>
+
+  <h2>Ответственность</h2>
+  <p>Сервис предоставляется «как есть». Мы стараемся, чтобы он работал стабильно, но не гарантируем отсутствие ошибок и перерывов. В пределах, допустимых законом, мы не отвечаем за косвенные убытки, связанные с использованием сервиса.</p>
+
+  <h2>Изменения условий</h2>
+  <p>Мы можем обновлять эти условия. Дата последнего обновления указана вверху страницы. Продолжая пользоваться сервисом после изменений, вы соглашаетесь с новой редакцией.</p>
+
+  <h2>Контакты</h2>
+  <p><a href="mailto:markingmark33@gmail.com">markingmark33@gmail.com</a></p>
+</article>
+<article lang="en">
+  <h1>Terms of Use</h1>
+  <p class="updated">Last updated: September 28, 2026</p>
+  <p class="lead">These terms apply when you use Lumina (luminalm.xyz). By signing in, you agree to them and to our <a href="privacy.html">Privacy Policy</a>.</p>
+
+  <h2>What Lumina is</h2>
+  <p>Lumina uses AI to work through documents: it splits them into sections, builds a map, answers questions, shows where in the document each answer comes from, and creates infographics.</p>
+
+  <h2>Your account</h2>
+  <p>You sign in with your Google account. You are responsible for what happens under your account. If you are under 14, please use the service with the consent of a parent or legal guardian.</p>
+
+  <h2>Your content</h2>
+  <ul>
+    <li>You keep the rights to the documents you upload. We use them only to run the service: analysis, answers and keeping your history.</li>
+    <li>Only upload material you have the right to use, and don’t upload illegal content.</li>
+  </ul>
+
+  <h2>AI answers</h2>
+  <p>AI can make mistakes. Check important information against the document itself; Lumina shows where each answer comes from so you can. Answers are not legal, medical, financial or other professional advice.</p>
+
+  <h2>Plans and limits</h2>
+  <ul>
+    <li><b>Free plan:</b> 5 documents, no infographics.</li>
+    <li><b>Pro and Max:</b> higher limits; terms and prices are listed on the pricing page. For now, access is granted on request at <a href="mailto:markingmark33@gmail.com">markingmark33@gmail.com</a>.</li>
+    <li>We may change limits and plans, and will announce changes on the site in advance.</li>
+  </ul>
+
+  <h2>What’s not allowed</h2>
+  <ul>
+    <li>getting around the service’s limits and restrictions;</li>
+    <li>sending bulk automated requests;</li>
+    <li>trying to access other people’s data or disrupt the service;</li>
+    <li>using the service to break the law or infringe others’ rights.</li>
+  </ul>
+
+  <h2>Ending use</h2>
+  <p>You can stop using the service at any time and ask us to delete your account. We may restrict access if these terms are violated.</p>
+
+  <h2>Liability</h2>
+  <p>The service is provided “as is”. We work to keep it reliable but can’t guarantee it will be error-free or uninterrupted. To the extent permitted by law, we are not liable for indirect losses related to using the service.</p>
+
+  <h2>Changes to these terms</h2>
+  <p>We may update these terms. The date of the latest update is shown at the top of this page. By continuing to use the service after changes, you accept the updated terms.</p>
+
+  <h2>Contact</h2>
+  <p><a href="mailto:markingmark33@gmail.com">markingmark33@gmail.com</a></p>
+</article>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© 2026 Lumina</span>
+    <a href="index.html"><span lang="ru">Главная</span><span lang="en">Home</span></a>
+    <a href="terms.html"><span lang="ru">Условия использования</span><span lang="en">Terms of Use</span></a>
+    <a href="privacy.html"><span lang="ru">Конфиденциальность</span><span lang="en">Privacy</span></a>
+    <a href="mailto:markingmark33@gmail.com"><span lang="ru">Связаться</span><span lang="en">Contact</span></a>
+  </div>
+</footer>
+<script>
+  var TITLES = { ru: "Условия использования · Lumina", en: "Terms of Use · Lumina" };
+  function paint() {
+    var l = document.documentElement.lang === 'en' ? 'en' : 'ru';
+    document.title = TITLES[l];
+    document.getElementById('langBtn').textContent = l === 'ru' ? 'EN' : 'RU';
+  }
+  document.getElementById('langBtn').onclick = function () {
+    var next = document.documentElement.lang === 'en' ? 'ru' : 'en';
+    document.documentElement.lang = next;
+    try { localStorage.setItem('lumina_lang', next); } catch (e) {}
+    paint();
+  };
+  document.getElementById('themeBtn').onclick = function () {
+    var cur = document.documentElement.dataset.theme
+      || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    var next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('lumina_theme', next); } catch (e) {}
+  };
+  paint();
+</script>
+</body>
+</html>

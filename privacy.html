@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Политика конфиденциальности · Lumina</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%228%22%20fill%3D%22%231b2233%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%2218%22%20width%3D%2218%22%20height%3D%226%22%20rx%3D%222%22%20fill%3D%22%23f5dc4a%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%229%22%20width%3D%2213%22%20height%3D%223%22%20rx%3D%221.5%22%20fill%3D%22%23f9fafb%22%2F%3E%3C%2Fsvg%3E">
+<script>
+  // тема и язык — общие с лендингом (localStorage), ставим до отрисовки
+  (function () {
+    try {
+      var t = localStorage.getItem('lumina_theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (e) {}
+    var lang = (function () {
+      try {
+        var q = new URLSearchParams(location.search).get('lang');
+        if (q === 'ru' || q === 'en') { localStorage.setItem('lumina_lang', q); return q; }
+        var s = localStorage.getItem('lumina_lang');
+        if (s === 'ru' || s === 'en') return s;
+      } catch (e) {}
+      var l = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+      return String(l).toLowerCase().indexOf('ru') === 0 ? 'ru' : 'en';
+    })();
+    document.documentElement.lang = lang;
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,600;7..72,700&family=Onest:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: oklch(0.985 0.004 255); --sheet: #ffffff;
+    --ink: oklch(0.23 0.035 262); --ink-2: oklch(0.40 0.03 262); --ink-3: oklch(0.52 0.025 262);
+    --line: oklch(0.91 0.008 262); --accent: oklch(0.46 0.17 264);
+    --marker: oklch(0.92 0.16 103); --hl: var(--marker); --hl-ink: var(--ink);
+    --font-ui: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-display: 'Literata', Georgia, 'Times New Roman', serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --paper: oklch(0.175 0.018 262); --sheet: oklch(0.215 0.02 262);
+      --ink: oklch(0.95 0.008 262); --ink-2: oklch(0.80 0.015 262); --ink-3: oklch(0.68 0.02 262);
+      --line: oklch(0.30 0.02 262); --accent: oklch(0.76 0.12 264);
+      --hl: oklch(0.58 0.125 91); --hl-ink: var(--ink);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: oklch(0.175 0.018 262); --sheet: oklch(0.215 0.02 262);
+    --ink: oklch(0.95 0.008 262); --ink-2: oklch(0.80 0.015 262); --ink-3: oklch(0.68 0.02 262);
+    --line: oklch(0.30 0.02 262); --accent: oklch(0.76 0.12 264);
+    --hl: oklch(0.58 0.125 91); --hl-ink: var(--ink);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-ui); font-size: 17px; line-height: 1.65; background: var(--paper); color: var(--ink-2); }
+  a { color: var(--accent); text-underline-offset: 2px; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 20px; }
+  header { border-bottom: 1px solid var(--line); }
+  .bar { display: flex; align-items: center; gap: 10px; height: 64px; }
+  .wordmark { font-family: var(--font-display); font-weight: 700; font-size: 22px; color: var(--ink);
+    text-decoration: none; display: inline-flex; align-items: baseline; margin-right: auto; }
+  .wordmark .mk { color: var(--hl-ink); background-image: linear-gradient(var(--hl), var(--hl)); background-repeat: no-repeat;
+    background-position: 0 50%; background-size: 100% 74%; padding: 0 .1em; border-radius: .08em; }
+  .bar button { height: 36px; min-width: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: transparent; color: var(--ink-2); font: 600 13px var(--font-ui); cursor: pointer; }
+  .bar button:hover { color: var(--ink); }
+  main { padding: 48px 0 72px; }
+  h1 { font-family: var(--font-display); color: var(--ink); font-size: clamp(2rem, 1.4rem + 2vw, 2.7rem); line-height: 1.2; letter-spacing: -0.015em; }
+  .updated { margin-top: 10px; font-size: 14px; color: var(--ink-3); }
+  .lead { margin-top: 22px; }
+  h2 { font-family: var(--font-display); color: var(--ink); font-size: 1.3rem; line-height: 1.3; margin-top: 38px; }
+  p, ul { margin-top: 12px; }
+  ul { padding-left: 1.2em; }
+  li { margin-top: 6px; }
+  b { color: var(--ink); font-weight: 600; }
+  footer { border-top: 1px solid var(--line); padding: 24px 0 40px; font-size: 14px; color: var(--ink-3); }
+  footer .wrap { display: flex; gap: 18px; flex-wrap: wrap; }
+  footer a { color: var(--ink-2); text-decoration: none; }
+  footer a:hover { color: var(--ink); }
+  html[lang="ru"] [lang="en"], html[lang="en"] [lang="ru"] { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <a class="wordmark" href="index.html"><span class="mk">lu</span>mina</a>
+    <button type="button" id="langBtn"></button>
+    <button type="button" id="themeBtn" aria-label="Тема / Theme"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:auto"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  </div>
+</header>
+<main class="wrap">
+<article lang="ru">
+  <h1>Политика конфиденциальности</h1>
+  <p class="updated">Последнее обновление: 28 сентября 2026 г.</p>
+  <p class="lead">Lumina (luminalm.xyz) помогает разбирать документы: делит их на разделы, отвечает на вопросы и показывает, где в тексте находится ответ. Здесь описано, какие данные мы получаем, зачем и как ими распоряжаемся.</p>
+
+  <h2>Какие данные мы получаем</h2>
+  <ul>
+    <li><b>Данные аккаунта Google:</b> имя, адрес электронной почты и фото профиля. Их передаёт Google при входе. Пароль от Google мы не получаем.</li>
+    <li><b>Ваши документы и запросы:</b> загруженные файлы (PDF, презентации) и вставленный текст, ваши вопросы, ответы, созданные карты и инфографика.</li>
+    <li><b>Отзывы</b>, которые вы отправляете через форму «Фидбэк».</li>
+    <li><b>Данные об использовании:</b> какие действия вы выполняли (разбор документа, вопрос, инфографика) и сколько ресурсов ИИ на это ушло. Это нужно для лимитов тарифов и расчёта наших затрат.</li>
+    <li><b>Настройки в браузере:</b> тема, язык и данные входа хранятся в локальном хранилище вашего браузера.</li>
+  </ul>
+
+  <h2>Зачем мы их используем</h2>
+  <ul>
+    <li>чтобы разбирать ваши документы, отвечать на вопросы и сохранять историю разборов;</li>
+    <li>чтобы применять лимиты тарифов;</li>
+    <li>чтобы отвечать на ваши обращения и улучшать сервис по отзывам.</li>
+  </ul>
+  <p>Мы не продаём ваши данные, не показываем рекламу и не используем сторонние системы аналитики и трекеры.</p>
+
+  <h2>Обработка с помощью ИИ</h2>
+  <p>Для разбора документов мы используем Gemini API от Google. В Google передаются текст документа и ваши вопросы. Для сканов без текстового слоя передаются изображения страниц, а для инфографики — текст выбранного раздела. Мы используем платный доступ к Gemini API; по <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener">условиям Google</a> для платных сервисов содержимое таких запросов не используется для улучшения продуктов Google.</p>
+
+  <h2>Где хранятся данные</h2>
+  <p>Аккаунты, история разборов, изображения страниц и инфографика хранятся в Supabase. Обработка запросов идёт на серверах Render. Серверы этих подрядчиков могут находиться за пределами вашей страны.</p>
+
+  <h2>Сколько мы храним данные</h2>
+  <p>Данные хранятся, пока у вас есть аккаунт. Удалённый чат пропадает из вашей истории. Чтобы полностью удалить аккаунт и все связанные данные, включая изображения страниц и инфографику, напишите нам на <a href="mailto:markingmark33@gmail.com">markingmark33@gmail.com</a>. Мы удалим их в течение 30 дней.</p>
+
+  <h2>Ваши права</h2>
+  <p>Вы можете узнать, какие ваши данные у нас есть, попросить исправить или удалить их. Для этого напишите на <a href="mailto:markingmark33@gmail.com">markingmark33@gmail.com</a>.</p>
+
+  <h2>Дети</h2>
+  <p>Lumina подходит для учёбы, в том числе школьникам. Если вам меньше 14 лет, пользуйтесь сервисом с согласия родителей или законных представителей.</p>
+
+  <h2>Изменения политики</h2>
+  <p>Мы можем обновлять эту политику. Дата последнего обновления указана вверху страницы. О существенных изменениях мы сообщим на сайте.</p>
+
+  <h2>Контакты</h2>
+  <p>По любым вопросам о данных: <a href="mailto:markingmark33@gmail.com">markingmark33@gmail.com</a>.</p>
+</article>
+<article lang="en">
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated: September 28, 2026</p>
+  <p class="lead">Lumina (luminalm.xyz) helps you work through documents: it splits them into sections, answers your questions and shows where in the text each answer comes from. This page explains what data we receive, why, and how we handle it.</p>
+
+  <h2>What data we receive</h2>
+  <ul>
+    <li><b>Google account data:</b> your name, email address and profile photo, shared by Google when you sign in. We never receive your Google password.</li>
+    <li><b>Your documents and requests:</b> uploaded files (PDFs, presentations) and pasted text, your questions, the answers, and the maps and infographics you create.</li>
+    <li><b>Feedback</b> you send through the Feedback form.</li>
+    <li><b>Usage data:</b> which actions you performed (analyzing a document, asking a question, creating an infographic) and how much AI capacity they used. We need this to apply plan limits and track our costs.</li>
+    <li><b>Browser settings:</b> your theme, language and sign-in session are kept in your browser’s local storage.</li>
+  </ul>
+
+  <h2>Why we use it</h2>
+  <ul>
+    <li>to analyze your documents, answer your questions and keep your history;</li>
+    <li>to apply plan limits;</li>
+    <li>to respond to you and improve the service based on feedback.</li>
+  </ul>
+  <p>We don’t sell your data, don’t show ads, and don’t use third-party analytics or trackers.</p>
+
+  <h2>AI processing</h2>
+  <p>We use Google’s Gemini API to analyze documents. The document text and your questions are sent to Google. For scans without a text layer, page images are sent; for infographics, the text of the selected section is sent. We use paid access to the Gemini API; under <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener">Google’s terms</a> for paid services, the content of these requests is not used to improve Google’s products.</p>
+
+  <h2>Where data is stored</h2>
+  <p>Accounts, your history, page images and infographics are stored with Supabase. Requests are processed on Render’s servers. These providers’ servers may be located outside your country.</p>
+
+  <h2>How long we keep data</h2>
+  <p>We keep your data for as long as you have an account. A deleted chat disappears from your history. To fully delete your account and all related data, including page images and infographics, email us at <a href="mailto:markingmark33@gmail.com">markingmark33@gmail.com</a>. We’ll delete it within 30 days.</p>
+
+  <h2>Your rights</h2>
+  <p>You can ask what data we hold about you, and ask us to correct or delete it. Email <a href="mailto:markingmark33@gmail.com">markingmark33@gmail.com</a>.</p>
+
+  <h2>Children</h2>
+  <p>Lumina is suitable for studying, including for school students. If you are under 14, please use the service with the consent of a parent or legal guardian.</p>
+
+  <h2>Changes to this policy</h2>
+  <p>We may update this policy. The date of the latest update is shown at the top of this page. We’ll announce significant changes on the site.</p>
+
+  <h2>Contact</h2>
+  <p>For any questions about your data: <a href="mailto:markingmark33@gmail.com">markingmark33@gmail.com</a>.</p>
+</article>
+</main>
+<footer>
+  <div class="wrap">
+    <span>© 2026 Lumina</span>
+    <a href="index.html"><span lang="ru">Главная</span><span lang="en">Home</span></a>
+    <a href="terms.html"><span lang="ru">Условия использования</span><span lang="en">Terms of Use</span></a>
+    <a href="privacy.html"><span lang="ru">Конфиденциальность</span><span lang="en">Privacy</span></a>
+    <a href="mailto:markingmark33@gmail.com"><span lang="ru">Связаться</span><span lang="en">Contact</span></a>
+  </div>
+</footer>
+<script>
+  var TITLES = { ru: "Политика конфиденциальности · Lumina", en: "Privacy Policy · Lumina" };
+  function paint() {
+    var l = document.documentElement.lang === 'en' ? 'en' : 'ru';
+    document.title = TITLES[l];
+    document.getElementById('langBtn').textContent = l === 'ru' ? 'EN' : 'RU';
+  }
+  document.getElementById('langBtn').onclick = function () {
+    var next = document.documentElement.lang === 'en' ? 'ru' : 'en';
+    document.documentElement.lang = next;
+    try { localStorage.setItem('lumina_lang', next); } catch (e) {}
+    paint();
+  };
+  document.getElementById('themeBtn').onclick = function () {
+    var cur = document.documentElement.dataset.theme
+      || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    var next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('lumina_theme', next); } catch (e) {}
+  };
+  paint();
+</script>
+</body>
+</html>

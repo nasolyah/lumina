@@ -35,6 +35,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,500;7..72,600;7..72,700&family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="gsi.js"></script>
 <style>
   /* ── ТОКЕНЫ: «маркер по бумаге». Светлая тема по умолчанию, тёмная — системная или выбранная ── */
   :root {
@@ -338,6 +339,10 @@
   .google-btn { height: 50px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--sheet); color: var(--ink);
     display: flex; align-items: center; justify-content: center; gap: 12px; font-weight: 600; font-size: 16px; cursor: pointer; transition: border-color .15s; }
   .google-btn:hover { border-color: var(--ink-3); }
+  /* официальная кнопка Google (gsi.js); пока она не готова — наша кнопка-редирект */
+  .gsi-slot { display: none; min-height: 44px; justify-content: center; }
+  body.gsi-on .gsi-slot { display: flex; }
+  body.gsi-on #googleSignIn { display: none; }
   .google-btn svg { width: 20px; height: 20px; }
   .or { display: flex; align-items: center; gap: 12px; color: var(--ink-3); font-size: 13.5px; margin: 6px 0; }
   .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
@@ -388,6 +393,7 @@
   <div class="sb-body">
     <div class="sb-title" data-i18n="side.title">Вход в Lumina</div>
     <div class="sb-sub" data-i18n="side.sub">Войдите через Google, чтобы сохранять разборы и возвращаться к ним.</div>
+    <div class="gsi-slot" id="gsiSlot"></div>
     <button class="google-btn" id="googleSignIn" onclick="handleGoogleSignIn()">
       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -397,7 +403,7 @@
       </svg>
       <span data-i18n="side.google">Войти через Google</span>
     </button>
-    <p class="sb-note" data-i18n-html="side.note">Продолжая, вы соглашаетесь с <a href="#">Условиями использования</a> и <a href="#">Политикой конфиденциальности</a>.</p>
+    <p class="sb-note" data-i18n-html="side.note">Продолжая, вы соглашаетесь с <a href="terms.html">Условиями использования</a> и <a href="privacy.html">Политикой конфиденциальности</a>.</p>
   </div>
 </aside>
 
@@ -608,8 +614,8 @@
     <a class="wordmark" href="#"><span class="mk">lu</span>mina</a>
     <span>© 2026 Lumina</span>
     <nav>
-      <a href="#" data-i18n="ft.terms">Условия</a>
-      <a href="#" data-i18n="ft.privacy">Конфиденциальность</a>
+      <a href="terms.html" data-i18n="ft.terms">Условия</a>
+      <a href="privacy.html" data-i18n="ft.privacy">Конфиденциальность</a>
       <a href="mailto:markingmark33@gmail.com" data-i18n="ft.contact">Связаться</a>
     </nav>
   </div>
@@ -627,7 +633,7 @@
       'side.title': 'Вход в Lumina',
       'side.sub': 'Войдите через Google, чтобы сохранять разборы и возвращаться к ним.',
       'side.google': 'Войти через Google',
-      'side.note': 'Продолжая, вы соглашаетесь с <a href="#">Условиями использования</a> и <a href="#">Политикой конфиденциальности</a>.',
+      'side.note': 'Продолжая, вы соглашаетесь с <a href="terms.html">Условиями использования</a> и <a href="privacy.html">Политикой конфиденциальности</a>.',
       'nav.how': 'Как это работает', 'nav.compare': 'Сравнение', 'nav.pricing': 'Цены',
       'nav.logout': 'Выйти', 'nav.login': 'Войти', 'nav.try': 'Попробовать',
       'hero.title': 'Спросите документ. <mark class="mk-draw">Увидите, где написан ответ.</mark>',
@@ -689,7 +695,7 @@
       'side.title': 'Sign in to Lumina',
       'side.sub': 'Sign in with Google to save your documents and come back to them.',
       'side.google': 'Continue with Google',
-      'side.note': 'By continuing, you agree to the <a href="#">Terms of Use</a> and <a href="#">Privacy Policy</a>.',
+      'side.note': 'By continuing, you agree to the <a href="terms.html">Terms of Use</a> and <a href="privacy.html">Privacy Policy</a>.',
       'nav.how': 'How it works', 'nav.compare': 'Comparison', 'nav.pricing': 'Pricing',
       'nav.logout': 'Sign out', 'nav.login': 'Sign in', 'nav.try': 'Try it',
       'hero.title': 'Ask your document. <mark class="mk-draw">See where the answer is written.</mark>',
@@ -764,6 +770,7 @@
     LANG = next === 'en' ? 'en' : 'ru';
     try { localStorage.setItem('lumina_lang', LANG); } catch (_) {}
     applyI18n();
+    renderGsi();
   }
   document.getElementById('langBtn').onclick = () => setLang(LANG === 'ru' ? 'en' : 'ru');
 
@@ -777,6 +784,7 @@
     const next = currentTheme() === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = next;
     try { localStorage.setItem('lumina_theme', next); } catch (_) {}
+    renderGsi();
   };
 
   // ── связи на демо-карте: плавные кривые от родителя к ребёнку (как в приложении) ──
@@ -811,7 +819,7 @@
   applyI18n();
 
   /* ── ВХОД (боковая панель) ── */
-  function openSidebar() { document.body.classList.add('sidebar-open'); document.getElementById('sidebar').focus(); }
+  function openSidebar() { document.body.classList.add('sidebar-open'); document.getElementById('sidebar').focus(); renderGsi(); }
   function closeSidebar() { document.body.classList.remove('sidebar-open'); }
   document.getElementById('sidebarClose').addEventListener('click', closeSidebar);
   document.getElementById('overlay').addEventListener('click', closeSidebar);
@@ -824,6 +832,18 @@
   try {
     if (window.supabase) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   } catch (e) { console.error('Supabase init:', e); }
+
+  // вход через Google на нашем домене (gsi.js): Google показывает наш сайт, а не
+  // адрес Supabase. Не получилось (нет client_id, блокировщик) — остаётся кнопка-редирект.
+  function renderGsi(){
+    if (!window.LuminaGSI || !LuminaGSI.ready) return;
+    const slot = document.getElementById('gsiSlot');
+    LuminaGSI.render(slot, { theme: currentTheme(), lang: LANG, width: slot.clientWidth || 320 });
+  }
+  if (sb && window.LuminaGSI) {
+    LuminaGSI.init({ supabase: sb, onError: e => alert(T('js.loginFailed') + e.message) })
+      .then(ok => { if (ok) { document.body.classList.add('gsi-on'); renderGsi(); } });
+  }
 
   async function handleGoogleSignIn() {
     if (!sb) { alert(T('js.noSupabase')); return; }
