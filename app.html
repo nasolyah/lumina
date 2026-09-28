@@ -58,6 +58,7 @@
     --danger:    oklch(0.55 0.19 25);
     --marker:    oklch(0.92 0.16 103);
     --hl:        var(--marker);
+    --hl-ink:    var(--pill-ink);
     --pill-ink:  #1b2233;                  /* текст на пилюлях-маркерах — всегда тёмный */
     /* палитра веток карты (текстовыделители); зелёный зарезервирован за ответами саб-чата */
     --br-1: oklch(0.824 0.077 246);   /* голубой   #9CCBF5 */
@@ -101,7 +102,8 @@
       --warn:      oklch(0.80 0.13 70);
       --danger:    oklch(0.72 0.16 25);
       --marker:    oklch(0.86 0.15 102);
-      --hl:        var(--marker);           /* и на тёмном — ярко-жёлтый маркер (текст на нём тёмный) */
+      --hl:        oklch(0.58 0.125 91);   /* на тёмном: золотисто-жёлтый под белым текстом */
+      --hl-ink:    var(--text);
       --br-1: oklch(0.76 0.075 246);
       --br-2: oklch(0.84 0.135 95);
       --br-3: oklch(0.75 0.095 354);
@@ -135,7 +137,8 @@
     --warn:    oklch(0.80 0.13 70);
     --danger:    oklch(0.72 0.16 25);
     --marker:    oklch(0.86 0.15 102);
-    --hl:      var(--marker);           /* и на тёмном — ярко-жёлтый маркер (текст на нём тёмный) */
+    --hl:      oklch(0.58 0.125 91);   /* на тёмном: золотисто-жёлтый под белым текстом */
+    --hl-ink:  var(--text);
     --br-1: oklch(0.76 0.075 246);
     --br-2: oklch(0.84 0.135 95);
     --br-3: oklch(0.75 0.095 354);
@@ -184,7 +187,7 @@
   }
   .brand .mk { background-image: linear-gradient(var(--hl), var(--hl)); background-repeat: no-repeat;
     background-position: 0 50%; background-size: 100% 74%; padding: 0 .1em; border-radius: .08em;
-    color: var(--pill-ink); }
+    color: var(--hl-ink); }
   .topbar .stats {
     margin-left: auto; display: flex; gap: 18px;
     font-family: var(--font-ui); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted);
