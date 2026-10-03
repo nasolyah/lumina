@@ -312,6 +312,7 @@
   .price li::before { content: ''; position: absolute; left: 2px; top: .5em; width: 12px; height: 7px; border-left: 2px solid var(--accent);
     border-bottom: 2px solid var(--accent); transform: rotate(-45deg); }
   .price .btn { margin-top: auto; }
+  .price-how { margin-top: 10px; font-size: 13px; color: var(--ink-3); text-align: center; }
 
   /* финал */
   .final { text-align: left; }
@@ -575,7 +576,7 @@
           <button class="btn btn-primary btn-start" onclick="openSidebar()" data-i18n="pr.start">Начать бесплатно</button>
         </div>
         <div class="price">
-          <h3><span>Pro</span><span class="soon" data-i18n="pr.soon">Скоро</span></h3>
+          <h3><span>Pro</span><span class="soon" data-i18n="pr.byEmail">По почте</span></h3>
           <div class="amount">$5 <small data-i18n="pr.month">в месяц</small></div>
           <ul>
             <li data-i18n="pr.p1">Документы без ограничений</li>
@@ -583,17 +584,19 @@
             <li data-i18n="pr.p3">Обработка без очереди</li>
             <li data-i18n="pr.p4">10 инфографик в месяц</li>
           </ul>
-          <a class="btn btn-quiet" href="mailto:markingmark33@gmail.com?subject=Lumina%20Pro" data-i18n="pr.write">Написать нам</a>
+          <a class="btn btn-primary" href="mailto:markingmark33@gmail.com?subject=Lumina%20Pro" data-i18n="pr.buyPro">Оформить Pro</a>
+          <p class="price-how" data-i18n="pr.how">Напишите нам: пришлём способ оплаты и включим тариф.</p>
         </div>
         <div class="price">
-          <h3><span>Max</span><span class="soon" data-i18n="pr.soon">Скоро</span></h3>
+          <h3><span>Max</span><span class="soon" data-i18n="pr.byEmail">По почте</span></h3>
           <div class="amount">$15 <small data-i18n="pr.month">в месяц</small></div>
           <ul>
             <li data-i18n="pr.m1">Инфографика без ограничений</li>
             <li data-i18n="pr.m2">Всё, что есть в Pro</li>
             <li data-i18n="pr.m3">Для учителей и тех, кто готовит материалы</li>
           </ul>
-          <a class="btn btn-quiet" href="mailto:markingmark33@gmail.com?subject=Lumina%20Max" data-i18n="pr.write">Написать нам</a>
+          <a class="btn btn-primary" href="mailto:markingmark33@gmail.com?subject=Lumina%20Max" data-i18n="pr.buyMax">Оформить Max</a>
+          <p class="price-how" data-i18n="pr.how">Напишите нам: пришлём способ оплаты и включим тариф.</p>
         </div>
       </div>
     </div>
@@ -677,7 +680,9 @@
       'cmp.r4': 'Для чего лучше', 'cmp.r4u': 'Понять, как устроен документ целиком', 'cmp.r4t': 'Быстро получить пересказ или ответ',
       'pr.title': 'Цены', 'pr.free': 'Бесплатно',
       'pr.f1': '5 документов', 'pr.f2': 'Карта, чат и вопросы к веткам', 'pr.f3': 'Ответы со ссылкой на страницу', 'pr.f4': 'История разборов',
-      'pr.start': 'Начать бесплатно', 'pr.soon': 'Скоро', 'pr.month': 'в месяц',
+      'pr.start': 'Начать бесплатно', 'pr.month': 'в месяц',
+      'pr.byEmail': 'По почте', 'pr.buyPro': 'Оформить Pro', 'pr.buyMax': 'Оформить Max',
+      'pr.how': 'Напишите нам: пришлём способ оплаты и включим тариф.',
       'pr.p4': '10 инфографик в месяц',
       'pr.m1': 'Инфографика без ограничений', 'pr.m2': 'Всё, что есть в Pro', 'pr.m3': 'Для учителей и тех, кто готовит материалы',
       'pr.p1': 'Документы без ограничений', 'pr.p2': 'Всё, что есть в бесплатном', 'pr.p3': 'Обработка без очереди', 'pr.write': 'Написать нам',
@@ -739,7 +744,9 @@
       'cmp.r4': 'Best for', 'cmp.r4u': 'Understanding how the whole document fits together', 'cmp.r4t': 'Getting a quick summary or answer',
       'pr.title': 'Pricing', 'pr.free': 'Free',
       'pr.f1': '5 documents', 'pr.f2': 'Map, chat and questions about branches', 'pr.f3': 'Answers linked to the page', 'pr.f4': 'History of your documents',
-      'pr.start': 'Start for free', 'pr.soon': 'Coming soon', 'pr.month': 'per month',
+      'pr.start': 'Start for free', 'pr.month': 'per month',
+      'pr.byEmail': 'By email', 'pr.buyPro': 'Get Pro', 'pr.buyMax': 'Get Max',
+      'pr.how': 'Email us: we’ll send payment details and turn on your plan.',
       'pr.p4': '10 infographics a month',
       'pr.m1': 'Unlimited infographics', 'pr.m2': 'Everything in Pro', 'pr.m3': 'For teachers and anyone making study materials',
       'pr.p1': 'Unlimited documents', 'pr.p2': 'Everything in Free', 'pr.p3': 'No waiting in the queue', 'pr.write': 'Get in touch',
